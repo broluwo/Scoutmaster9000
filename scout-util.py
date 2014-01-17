@@ -238,8 +238,9 @@ def scrapeTeam(teamNumber = "", teamNumberArray = {}):
 # Function: scrapeRegional
 # ------------------------
 # Employs the Blue Alliance API and generates the JSON data for the input regional and year. It 
-# then formats the data and dumps it to the server
-def scrapeRegional(regionalYear, regionalName):
+# then formats the data and dumps it to the server. The setTeam flags determines whether or no the teams
+# encountered by the function should be sent to the teams page of Scoutmaster
+def scrapeRegional(regionalYear, regionalName, setTeam = False):
     eventsURL = "http://www.thebluealliance.com/api/v1/events/list?year=" + str(regionalYear).strip()
     keyData = json.loads(requests.get(eventsURL).content)
     index = 0
@@ -274,6 +275,10 @@ def scrapeRegional(regionalYear, regionalName):
             level = str(match["competition_level"])
             redTeam = []
             blueTeam = []
+            if setTeam:
+                scrapeTeam(teamNumberArray = match["alliances"]["red"]["teams"])
+                scrapeTeam(teamNumberArray = match["alliances"]["blue"]["teams"])
+
             for i in range(0, len(match["alliances"]["red"]["teams"])):
             	redTeam.append(match["alliances"]["red"]["teams"][i][3:])
             	blueTeam.append(match["alliances"]["blue"]["teams"][i][3:]) 
