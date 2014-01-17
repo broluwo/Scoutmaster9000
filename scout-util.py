@@ -199,7 +199,7 @@ def lookUpRegional(regional):
 
 # Function: scrapeTeam
 # ------------------------
-# Employs the Blue Alliance APi and generates the JSON data for the input team given by the team's
+# Employs the Blue Alliance API and generates the JSON data for the input team given by the team's
 # number. The teamNumber should be the official team number meaning it must be in the form of frc###. It
 # will then dump everything to the Scoutmaster servers.
 def scrapeTeam(teamNumber = "", teamNumberArray = {}):
