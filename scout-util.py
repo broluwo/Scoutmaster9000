@@ -251,7 +251,7 @@ def scrapeRegional(regionalYear, regionalName, setTeam = False):
     regionalURL = "http://www.thebluealliance.com/api/v1/event/details?event=" + str(keyData[index]['key']).strip()
     pageData = requests.get(regionalURL)
     teamData = json.loads(pageData.content)
-    listOfMatches = teamData['matches'
+    listOfMatches = teamData['matches']
     requestsArray = []
     matchURLSuffix = ""
     matchesAdded = 0
