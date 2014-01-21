@@ -80,8 +80,6 @@ def lookUpTeam(team, force):
                 teamNicknameText = soup.find(text='Team Nickname')
                 teamNickTag = teamNicknameText.findNext('td')
                 teamNick = teamNickTag.get_text()
-                print (team)
-                print(teamNick)
                 found = True
                 teamInfo = {"number": teamNumber, "name": teamNick, "reviews": [], "matches": [], "photos": []}
                 if force == True:
@@ -102,7 +100,9 @@ def lookUpTeam(team, force):
 # ------------------------
 # Recieves a regional name and searches through the FRC website for the regional that matches.
 # If found, it enters into the regional page, parses the participating team, and extracts the team
-# data  
+# data 
+# 
+# FIXME:DUPLICATES IN MATCHES.
 def lookUpRegional(regional):
     sSize = 0
     found = False
@@ -125,29 +125,19 @@ def lookUpRegional(regional):
                     pageRequest = requests.get(MYFIRST_SITE_ROOT + link.get("href"))
                     soup = BeautifulSoup(pageRequest.content)
                     
-                    #Now inside regional specific page
-                    #For loop implies target regional has been found and it looks at the FRC page for the targetted regional
-                    #in order to find the
                     for link in soup.find_all('a'):
                         if link.get("href") and "event_teamlist" in link.get("href"):
                             regionalTeamLink = MYFIRST_SITE_ROOT + link.get("href")
-                            # print regionalTeamLink
                             pageRequest = requests.get(MYFIRST_SITE_ROOT + link.get("href"))
                             soup = BeautifulSoup(pageRequest.content)
 
-                            #For loop that searches the teams registered for the target regional
                             for link in soup.find_all('a'):
                                 if link.get("href") and "team_details" in link.get("href"):
                                     teamNumber = "".join([str(num) for num in link.find_all(text=True)])
                                     num = int(teamNumber)
                                     print(type(num) == int)
                                     mapOfTeams[teamNumber] = lookUpTeam(num, True)
-                                   # pageRequest = requests.get(MYFIRST_SITE_ROOT + link.get("href"))
-                                   # soup = BeautifulSoup(pageRequest.content)
-                                   # teamNicknameText = soup.find(text='Team Nickname')
-                                   # teamNick = teamNicknameText.findNext('td')
 
-                        #This if block looks for the link to the page that holds all the match results.
                         if link.get("href") and "matchresults" in link.get("href"):
                             regionalTeamLink = link.get("href")
                             pageRequest = requests.get(regionalTeamLink)
@@ -163,9 +153,8 @@ def lookUpRegional(regional):
                             redScore = 0
                             blueScore = 0
 
-                            #For loop that searches the table of scores for the red alliance score and the blue alliance score
+                             
                             for row in rows:
-                                #We need to skip the first three rows
                                 if skipThree < 3:
                                     skipThree += 1
                                     print skipThree
@@ -189,7 +178,6 @@ def lookUpRegional(regional):
                                 matches.append({"number": num, "type": "Qualifications", "time": "".join(timeM), "red": redTeam,
                                     "blue": blueTeam, "rScore": redScore, "bScore": blueScore, "winner": "red"})
 
-                            #FIXME:DUPLICATES IN MATCHES.
                             stuffToSend = {"location": "".join(args.regional), "matches": matches}
                             urllib2.urlopen("http://0.0.0.0:8080/regionals", json.dumps(stuffToSend))
 
@@ -202,9 +190,9 @@ def lookUpRegional(regional):
 # Employs the Blue Alliance API and generates the JSON data for the input team given by the team's
 # number. The teamNumber should be the official team number meaning it must be in the form of frc###. It
 # will then dump everything to the Scoutmaster servers.
-def scrapeTeam(teamNumber = "", teamNumberArray = {}):
+def scrapeTeam(teamNumber = "", teamNumberArray = []):
     teamURL = "http://www.thebluealliance.com/api/v1/teams/show?teams="
-    if teamNumber != "" and teamNumberArray != {}:
+    if teamNumber != "" and teamNumberArray != []:
         raise TypeError("Cannot define a teamNumber and a teamNumberArray")
     elif teamNumber == "":
         teamJSONArray = []
@@ -264,12 +252,12 @@ def scrapeRegional(regionalYear, regionalName, setTeam = False):
             requestsArray.append(json.loads(pageData.content))
             matchesAdded = 0
             matchURLSuffix = ""
-    pageData = requests.get("http://www.thebluealliance.com/api/v1/match/details?match=" + matchURLSuffix[:-1])
-    requestsArray.append(json.loads(pageData.content))
+    if matchURLSuffix[:-1] != "":
+        pageData = requests.get("http://www.thebluealliance.com/api/v1/match/details?match=" + matchURLSuffix[:-1])
+        requestsArray.append(json.loads(pageData.content))
     matchArray = []
     
     for matchData in requestsArray:
-        print matchData
         for match in matchData:
             num = int(match["match_number"])
             level = str(match["competition_level"])
@@ -295,3 +283,7 @@ def scrapeRegional(regionalYear, regionalName, setTeam = False):
 
     jsonData = {"location": regionalName, "matches": matchArray, "year":int(regionalYear)}
     requests.post("http://0.0.0.0:8080/regionals", json.dumps(jsonData))
+
+scrapeRegional(2013, "Palmetto Regional", True)
+# scrapeTeam("frc449")
+
