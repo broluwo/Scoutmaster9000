@@ -11,7 +11,6 @@ the FIRST Robotics official website.
 # json for teh lulz
 import argparse, sys, requests
 import unicodedata
-import transaction
 import time
 import json
 import urllib2
@@ -262,7 +261,7 @@ def scrapeRegional(regionalYear, regionalName, force = False):
 # Parser settings
 # ---------------
 parser = argparse.ArgumentParser(description = "Retrieves data from the Blue Alliance website and stores it in Scoutmaster 9000.", epilog="(c) 2013 James Shepherdson, Brian Oluwo, Sam Maynard, Antares Chen; Team 449")
-parser.add_argument("-t", "--team", help = "A team to look up and add", metavar = "<team #>", nargs = '*')
+parser.add_argument("-t", "--team", help = "A team to look up and add", metavar = "<team #>", nargs = '*', type = int)
 parser.add_argument("-r", "--regional",
                     help="A regional to look up and add. Will automatically add teams participating that are not already in the database. Note that regional name must match the official name on my.usfirst.org.",
                     metavar="\"<regional name>\"")
@@ -272,7 +271,9 @@ parser.add_argument("-f", "--force",
 args = parser.parse_args()
 
 
-
+if args.team:
+    for i in range(0, len(args.team)):
+        args.team[i] = "frc" + str(args.team[i])
 if args.team and args.regional:
     print("Error:  You cannot look up a team and a regional at the same time.")
     sys.exit()
