@@ -15,6 +15,7 @@ import transaction
 import time
 import json
 import urllib2
+import re
 
 # Imported: Selected Modules
 # --------------------------
@@ -23,7 +24,6 @@ import urllib2
 from bs4 import BeautifulSoup
 from datetime import datetime #Used for Timestamp
 from datetime import timedelta#Used For TimeStamp
-import re
 
 # Global script settings
 # ----------------------
@@ -32,26 +32,6 @@ sys.setdefaultencoding("utf-8")
 MYFIRST_SITE_ROOT = "https://my.usfirst.org/myarea/index.lasso"
 maxRetry = 10
 mapOfTeams = {}
-
-# Parser settings
-# ---------------
-parser = argparse.ArgumentParser(description="Parse data from my.usfirst.org for importing into Scoutmaster 9000.", epilog="(c) 2013 James Shepherdson, Brian Oluwo, Sam Maynard; Team 449")
-parser.add_argument("-t", "--team", help="A team to look up and add", metavar="<team #>", type=int)
-parser.add_argument("-r", "--regional",
-                    help="A regional to look up and add. Will automatically add teams participating that are not already in the database. Note that regional name must match the official name on my.usfirst.org.",
-                    metavar="\"<regional name>\"")
-parser.add_argument("-f", "--force",
-                    help="Overwrite teams that already exist in the Scoutmaster 9000 database.  By default, if a team or regional already exists, it will not be changed.",
-                    action="store_true")
-args = parser.parse_args()
-
-if args.team and args.regional:
-    print("Error:  You cannot look up a team and a regional at the same time.")
-    sys.exit()
-if args.team:
-    lookUpTeam(args.team, False)
-if args.regional:
-    lookUpRegional(args.regional)
 
 # Function: LookUpTeam
 # --------------------
@@ -113,14 +93,10 @@ def lookUpRegional(regional):
                    "season_FP": "2011", "reports": "events", "area": "All", "results_size": "250"}
         pageRequest = requests.post(MYFIRST_SITE_ROOT, data=payload)
         soup = BeautifulSoup(pageRequest.content)
-
-        #For loop searches the FRC front page for team links
         for link in soup.find_all("a"):
             if link.get("href") and "event_details" in link.get("href"):
                 regionalName = "".join([str(num) for num in link.find_all(text=True)])
 
-                #TODO: need to give team and matches as children to the DB
-                #If statement that test if the target regional is found
                 if regionalName == args.regional:
                     pageRequest = requests.get(MYFIRST_SITE_ROOT + link.get("href"))
                     soup = BeautifulSoup(pageRequest.content)
@@ -144,7 +120,6 @@ def lookUpRegional(regional):
                             soup = BeautifulSoup(pageRequest.content)
                             startDate = soup.find('table', bgcolor="black").find("tbody").findNext("tr").findNext("td").findNext("td")
 
-                            #This Gets Important Info about teams matches and Match numbers
                             rows = soup.find('table', style="background: black none repeat scroll 0% 50%; -moz-background-clip: initial; -moz-background-origin: initial; -moz-background-inline-policy: initial; width: 100%;").find("tbody").find_all("tr")
                             matches = []
                             num = ""
@@ -284,6 +259,29 @@ def scrapeRegional(regionalYear, regionalName, setTeam = False):
     jsonData = {"location": regionalName, "matches": matchArray, "year":int(regionalYear)}
     requests.post("http://0.0.0.0:8080/regionals", json.dumps(jsonData))
 
-scrapeRegional(2013, "Palmetto Regional", True)
-# scrapeTeam("frc449")
+# Parser settings
+# ---------------
+parser = argparse.ArgumentParser(description = "Retrieves data from the Blue Alliance website and stores it in Scoutmaster 9000.", epilog="(c) 2013 James Shepherdson, Brian Oluwo, Sam Maynard, Antares Chen; Team 449")
+parser.add_argument("-t", "--team", help = "A team to look up and add", metavar = "<team #>", nargs = '*')
+parser.add_argument("-r", "--regional",
+                    help="A regional to look up and add. Will automatically add teams participating that are not already in the database. Note that regional name must match the official name on my.usfirst.org.",
+                    metavar="\"<regional name>\"")
+parser.add_argument("-f", "--force",
+                    help="Overwrite teams that already exist in the Scoutmaster 9000 database.  By default, if a team or regional already exists, it will not be changed.",
+                    action="store_true")
+args = parser.parse_args()
+
+
+
+if args.team and args.regional:
+    print("Error:  You cannot look up a team and a regional at the same time.")
+    sys.exit()
+elif args.regional and args.force:
+    scrapeRegional(2013, args.regional, setTeam = True)
+elif args.regional:
+    print args.regional
+    scrapeRegional(2013, args.regional, setTeam = False)
+elif args.team:
+    print args.team
+    scrapeTeam(teamNumberArray = args.team)
 
