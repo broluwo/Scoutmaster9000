@@ -165,7 +165,7 @@ def lookUpRegional(regional):
 # Employs the Blue Alliance API and generates the JSON data for the input team given by the team's
 # number. The teamNumber should be the official team number meaning it must be in the form of frc###. It
 # will then dump everything to the Scoutmaster servers.
-def scrapeTeam(teamNumber = "", teamNumberArray = []):
+def scrapeTeam(teamNumber = "", teamNumberArray = [], force = False):
     teamURL = "http://www.thebluealliance.com/api/v1/teams/show?teams="
     if teamNumber != "" and teamNumberArray != []:
         raise TypeError("Cannot define a teamNumber and a teamNumberArray")
@@ -187,7 +187,8 @@ def scrapeTeam(teamNumber = "", teamNumberArray = []):
         for data in teamJSONArray:
             teamNum = data["team_number"]
             teamNick = data["nickname"]
-            teamInfo = {"number": teamNum, "name": teamNick, "reviews": [], "matches": [], "photos": []}
+            teamInfo = {"force" : force, "number": teamNum, "name": teamNick, "reviews": [], "matches": [], "photos": []}
+            print teamInfo
             requests.post("http://0.0.0.0:8080/teams", json.dumps(teamInfo))
     else:
         raw = requests.get(teamURL + str(teamNumber).strip())
@@ -195,15 +196,15 @@ def scrapeTeam(teamNumber = "", teamNumberArray = []):
         data = data.pop(0)
         teamNum = data["team_number"]
         teamNick = data["nickname"]
-        teamInfo = {"number": teamNum, "name": teamNick, "reviews": [], "matches": [], "photos": []}
+        teamInfo = {"force" : force, "number": teamNum, "name": teamNick, "reviews": [], "matches": [], "photos": []}
         requests.post("http://0.0.0.0:8080/teams", json.dumps(teamInfo))
 
 # Function: scrapeRegional
 # ------------------------
 # Employs the Blue Alliance API and generates the JSON data for the input regional and year. It 
-# then formats the data and dumps it to the server. The setTeam flags determines whether or no the teams
+# then formats the data and dumps it to the server. The force flags determines whether or no the teams
 # encountered by the function should be sent to the teams page of Scoutmaster
-def scrapeRegional(regionalYear, regionalName, setTeam = False):
+def scrapeRegional(regionalYear, regionalName, force = False):
     eventsURL = "http://www.thebluealliance.com/api/v1/events/list?year=" + str(regionalYear).strip()
     keyData = json.loads(requests.get(eventsURL).content)
     index = 0
@@ -238,9 +239,8 @@ def scrapeRegional(regionalYear, regionalName, setTeam = False):
             level = str(match["competition_level"])
             redTeam = []
             blueTeam = []
-            if setTeam:
-                scrapeTeam(teamNumberArray = match["alliances"]["red"]["teams"])
-                scrapeTeam(teamNumberArray = match["alliances"]["blue"]["teams"])
+            scrapeTeam(teamNumberArray = match["alliances"]["red"]["teams"], force = True)
+            scrapeTeam(teamNumberArray = match["alliances"]["blue"]["teams"], force = True)
 
             for i in range(0, len(match["alliances"]["red"]["teams"])):
             	redTeam.append(match["alliances"]["red"]["teams"][i][3:])
@@ -277,11 +277,13 @@ if args.team and args.regional:
     print("Error:  You cannot look up a team and a regional at the same time.")
     sys.exit()
 elif args.regional and args.force:
-    scrapeRegional(2013, args.regional, setTeam = True)
+    scrapeRegional(2013, args.regional, force = True)
 elif args.regional:
     print args.regional
-    scrapeRegional(2013, args.regional, setTeam = False)
-elif args.team:
+    scrapeRegional(2013, args.regional)
+elif args.team and args.force:
     print args.team
+    scrapeTeam(teamNumberArray = args.team, force = True)
+elif args.team:
     scrapeTeam(teamNumberArray = args.team)
 
