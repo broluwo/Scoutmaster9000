@@ -203,7 +203,7 @@ def scrapeTeam(teamNumber = "", teamNumberArray = [], force = False):
 # Employs the Blue Alliance API and generates the JSON data for the input regional and year. It 
 # then formats the data and dumps it to the server. The force flags determines whether or no the teams
 # encountered by the function should be sent to the teams page of Scoutmaster
-def scrapeRegional(regionalYear, regionalName, force = False):
+def scrapeRegional(regionalName, regionalYear = 2014, force = False):
     eventsURL = "http://www.thebluealliance.com/api/v1/events/list?year=" + str(regionalYear).strip()
     keyData = json.loads(requests.get(eventsURL).content)
     index = 0
@@ -238,8 +238,8 @@ def scrapeRegional(regionalYear, regionalName, force = False):
             level = str(match["competition_level"])
             redTeam = []
             blueTeam = []
-            scrapeTeam(teamNumberArray = match["alliances"]["red"]["teams"], force = True)
-            scrapeTeam(teamNumberArray = match["alliances"]["blue"]["teams"], force = True)
+            scrapeTeam(teamNumberArray = match["alliances"]["red"]["teams"], force = force)
+            scrapeTeam(teamNumberArray = match["alliances"]["blue"]["teams"], force = force)
 
             for i in range(0, len(match["alliances"]["red"]["teams"])):
             	redTeam.append(match["alliances"]["red"]["teams"][i][3:])
@@ -268,20 +268,26 @@ parser.add_argument("-r", "--regional",
 parser.add_argument("-f", "--force",
                     help="Overwrite teams that already exist in the Scoutmaster 9000 database.  By default, if a team or regional already exists, it will not be changed.",
                     action="store_true")
+parser.add_argument("-y", "--year", help = "Adds a regional year option if scraping the regional", metavar = "<year #>", type = int)
 args = parser.parse_args()
 
 
 if args.team:
     for i in range(0, len(args.team)):
         args.team[i] = "frc" + str(args.team[i])
+
 if args.team and args.regional:
     print("Error:  You cannot look up a team and a regional at the same time.")
     sys.exit()
+elif args.regional and args.force and args.year:
+    scrapeRegional(args.regional, regionalYear = args.year, force = True)
 elif args.regional and args.force:
-    scrapeRegional(2013, args.regional, force = True)
+    scrapeRegional(args.regional, force = True)
+elif args.regional and args.year:
+    scrapeRegional(args.regional, regionalYear = args.year)
 elif args.regional:
     print args.regional
-    scrapeRegional(2013, args.regional)
+    scrapeRegional(args.regional)
 elif args.team and args.force:
     print args.team
     scrapeTeam(teamNumberArray = args.team, force = True)
