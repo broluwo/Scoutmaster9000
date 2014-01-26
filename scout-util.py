@@ -164,7 +164,7 @@ def lookUpRegional(regional):
 # Employs the Blue Alliance API and generates the JSON data for the input team given by the team's
 # number. The teamNumber should be the official team number meaning it must be in the form of frc###. It
 # will then dump everything to the Scoutmaster servers.
-def scrapeTeam(teamNumber = "", teamNumberArray = [], force = False):
+def scrapeTeam(matchArray, teamNumber = "", teamNumberArray = [], force = False):
     teamURL = "http://www.thebluealliance.com/api/v1/teams/show?teams="
     if teamNumber != "" and teamNumberArray != []:
         raise TypeError("Cannot define a teamNumber and a teamNumberArray")
@@ -179,14 +179,26 @@ def scrapeTeam(teamNumber = "", teamNumberArray = [], force = False):
                 raw = requests.get(teamURL + url[:-1])
                 teamJSONArray.append(json.loads(raw.content))
                 teamAdded = 0
-                matchURLSuffix = ""
+                url = "" # WHAT!? it was matchURL WHAT
         raw = requests.get(teamURL + url[:-1])
         teamJSONArray.append(json.loads(raw.content))
         teamJSONArray = teamJSONArray.pop(0)
         for data in teamJSONArray:
             teamNum = data["team_number"]
             teamNick = data["nickname"]
-            teamInfo = {"force" : force, "number": teamNum, "name": teamNick, "reviews": [], "matches": [], "photos": []}
+            matches = []
+            for match in matchArray:
+                for alliance in match["blue"]:
+                    if int(alliance) == teamNum:
+                        print "found"
+                        matches.append(match)
+                        break
+                for alliance in match["red"]:
+                    if int(alliance) == teamNum:
+                        print "found"
+                        matches.append(match)
+                        break
+            teamInfo = {"force" : force, "number": teamNum, "name": teamNick, "reviews": [], "matches": matches, "photos": []}
             print teamInfo
             requests.post("http://0.0.0.0:8080/teams", json.dumps(teamInfo))
     else:
@@ -231,6 +243,7 @@ def scrapeRegional(regionalName, regionalYear = 2014, force = False):
         pageData = requests.get("http://www.thebluealliance.com/api/v1/match/details?match=" + matchURLSuffix[:-1])
         requestsArray.append(json.loads(pageData.content))
     matchArray = []
+    teamsToScrape = []
     
     for matchData in requestsArray:
         for match in matchData:
@@ -238,9 +251,10 @@ def scrapeRegional(regionalName, regionalYear = 2014, force = False):
             level = str(match["competition_level"])
             redTeam = []
             blueTeam = []
-            scrapeTeam(teamNumberArray = match["alliances"]["red"]["teams"], force = force)
-            scrapeTeam(teamNumberArray = match["alliances"]["blue"]["teams"], force = force)
-
+            teamsToScrape.append(match["alliances"]["red"]["teams"])
+            teamsToScrape.append(match["alliances"]["blue"]["teams"])
+            # scrapeTeam(teamNumberArray = match["alliances"]["red"]["teams"], force = force)
+            # scrapeTeam(teamNumberArray = match["alliances"]["blue"]["teams"], force = force)
             for i in range(0, len(match["alliances"]["red"]["teams"])):
             	redTeam.append(match["alliances"]["red"]["teams"][i][3:])
             	blueTeam.append(match["alliances"]["blue"]["teams"][i][3:]) 
@@ -257,6 +271,9 @@ def scrapeRegional(regionalName, regionalYear = 2014, force = False):
 
     jsonData = {"location": regionalName, "matches": matchArray, "year":int(regionalYear)}
     requests.post("http://0.0.0.0:8080/regionals", json.dumps(jsonData))
+    for team in teamsToScrape:
+        scrapeTeam(matchArray, teamNumberArray = team, force = force)
+
 
 # Parser settings
 # ---------------
