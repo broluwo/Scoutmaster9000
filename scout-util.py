@@ -31,6 +31,7 @@ sys.setdefaultencoding("utf-8")
 MYFIRST_SITE_ROOT = "https://my.usfirst.org/myarea/index.lasso"
 maxRetry = 10
 mapOfTeams = {}
+requestPayload = {'X-TBA-App-Id': 'frc449:Scoutmaster_Utilities:1'}
 
 # Function: LookUpTeam
 # --------------------
@@ -176,11 +177,11 @@ def scrapeTeam(matchArray, teamNumber = "", teamNumberArray = [], force = False)
             url = url + str(teams).strip() + ","
             teamAdded += 1
             if teamAdded > 50:
-                raw = requests.get(teamURL + url[:-1])
+                raw = requests.get(teamURL + url[:-1], headers = requestPayload)
                 teamJSONArray.append(json.loads(raw.content))
                 teamAdded = 0
                 url = "" # WHAT!? it was matchURL WHAT
-        raw = requests.get(teamURL + url[:-1])
+        raw = requests.get(teamURL + url[:-1], headers = requestPayload)
         teamJSONArray.append(json.loads(raw.content))
         teamJSONArray = teamJSONArray.pop(0)
         for data in teamJSONArray:
@@ -190,19 +191,16 @@ def scrapeTeam(matchArray, teamNumber = "", teamNumberArray = [], force = False)
             for match in matchArray:
                 for alliance in match["blue"]:
                     if int(alliance) == teamNum:
-                        print "found"
                         matches.append(match)
                         break
                 for alliance in match["red"]:
                     if int(alliance) == teamNum:
-                        print "found"
                         matches.append(match)
                         break
             teamInfo = {"force" : force, "number": teamNum, "name": teamNick, "reviews": [], "matches": matches, "photos": []}
-            print teamInfo
             requests.post("http://0.0.0.0:8080/teams", json.dumps(teamInfo))
     else:
-        raw = requests.get(teamURL + str(teamNumber).strip())
+        raw = requests.get(teamURL + str(teamNumber).strip(), headers = requestPayload)
         data = json.loads(raw.content)
         data = data.pop(0)
         teamNum = data["team_number"]
@@ -217,14 +215,14 @@ def scrapeTeam(matchArray, teamNumber = "", teamNumberArray = [], force = False)
 # encountered by the function should be sent to the teams page of Scoutmaster
 def scrapeRegional(regionalName, regionalYear = 2014, force = False):
     eventsURL = "http://www.thebluealliance.com/api/v1/events/list?year=" + str(regionalYear).strip()
-    keyData = json.loads(requests.get(eventsURL).content)
+    keyData = json.loads(requests.get(eventsURL, headers = requestPayload).content)
     index = 0
     
     while keyData[index]['name'] != regionalName:
         index += 1
 
     regionalURL = "http://www.thebluealliance.com/api/v1/event/details?event=" + str(keyData[index]['key']).strip()
-    pageData = requests.get(regionalURL)
+    pageData = requests.get(regionalURL, headers = requestPayload)
     teamData = json.loads(pageData.content)
     listOfMatches = teamData['matches']
     requestsArray = []
@@ -235,16 +233,17 @@ def scrapeRegional(regionalName, regionalYear = 2014, force = False):
         matchURLSuffix = matchURLSuffix + str(matches) + ","
         matchesAdded += 1
         if matchesAdded > 50:
-            pageData = requests.get("http://www.thebluealliance.com/api/v1/match/details?match=" + matchURLSuffix[:-1])
+            pageData = requests.get("http://www.thebluealliance.com/api/v1/match/details?match=" + matchURLSuffix[:-1], headers = requestPayload)
+            print pageData.content
             requestsArray.append(json.loads(pageData.content))
             matchesAdded = 0
             matchURLSuffix = ""
     if matchURLSuffix[:-1] != "":
-        pageData = requests.get("http://www.thebluealliance.com/api/v1/match/details?match=" + matchURLSuffix[:-1])
+        pageData = requests.get("http://www.thebluealliance.com/api/v1/match/details?match=" + matchURLSuffix[:-1], headers = requestPayload)
+        print pageData.content
         requestsArray.append(json.loads(pageData.content))
     matchArray = []
     teamsToScrape = []
-    
     for matchData in requestsArray:
         for match in matchData:
             num = int(match["match_number"])
@@ -253,8 +252,6 @@ def scrapeRegional(regionalName, regionalYear = 2014, force = False):
             blueTeam = []
             teamsToScrape.append(match["alliances"]["red"]["teams"])
             teamsToScrape.append(match["alliances"]["blue"]["teams"])
-            # scrapeTeam(teamNumberArray = match["alliances"]["red"]["teams"], force = force)
-            # scrapeTeam(teamNumberArray = match["alliances"]["blue"]["teams"], force = force)
             for i in range(0, len(match["alliances"]["red"]["teams"])):
             	redTeam.append(match["alliances"]["red"]["teams"][i][3:])
             	blueTeam.append(match["alliances"]["blue"]["teams"][i][3:]) 
@@ -268,12 +265,40 @@ def scrapeRegional(regionalName, regionalYear = 2014, force = False):
             else: 
                 winner = "blue"
             matchArray.append({"number": num, "type": level, "red": redTeam,"blue": blueTeam, "rScore":int(redScore), "bScore":int(blueScore), "winner":winner})
-
-    jsonData = {"location": regionalName, "matches": matchArray, "year":int(regionalYear)}
+    winnerCount = getWinnerCount(matchArray)
+    jsonData = {"location": regionalName, "matches": matchArray, "winnerCount" : winnerCount, "year" : int(regionalYear)}
     requests.post("http://0.0.0.0:8080/regionals", json.dumps(jsonData))
     for team in teamsToScrape:
         scrapeTeam(matchArray, teamNumberArray = team, force = force)
 
+# Function: getWinnerCount
+# ------------------------
+# Returns the win, tie, and lose count for each team at a regional. The data will be stored in an array of the
+# form [x,y,z] = [win, tie, lose]. 
+def getWinnerCount(matchArray):
+    winnerArray = {}
+    for match in matchArray:
+        for team in match['blue']:
+            winnerArray[team] = [0,0,0]
+        for team in match['red']:
+            winnerArray[team] = [0,0,0]
+    for match in matchArray:
+        if match['winner'] == "blue":
+            for team in match['blue']:
+                winnerArray[team][0] = winnerArray[team][0] + 1
+            for team in match['red']:
+                winnerArray[team][2] = winnerArray[team][2] + 1
+        elif match['winner'] == "red":
+            for team in match['red']:
+                winnerArray[team][0] = winnerArray[team][0] + 1
+            for team in match['blue']:
+                winnerArray[team][2] = winnerArray[team][2] + 1
+        elif match['winner'] == "tie":
+            for team in match['red']:
+                winnerArray[team][1] = winnerArray[team][1] + 1
+            for team in match['blue']:
+                winnerArray[team][1] = winnerArray[team][1] + 1
+    return winnerArray
 
 # Parser settings
 # ---------------
@@ -309,5 +334,6 @@ elif args.team and args.force:
     print args.team
     scrapeTeam(teamNumberArray = args.team, force = True)
 elif args.team:
+    print args.team
     scrapeTeam(teamNumberArray = args.team)
 
