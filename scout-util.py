@@ -166,8 +166,8 @@ def scrapeTeam(matchArray, teamNumber = "", teamNumberArray = [], force = False)
             teamNum = data["team_number"]
             teamNick = data["nickname"]
             matches = [match for match in matchArray 
-                       if any(int(alliance) == teamNum in match["blue"]) or
-                          any(int(alliance) == teamNum in match["red"])]
+                       if any(int(alliance) == teamNum for alliance in match["blue"]) or
+                          any(int(alliance) == teamNum for alliance in match["red"])]
             teamInfo = {"force" : force, "number": teamNum, "name": teamNick, "reviews": [], "matches": matches, "photos": []}
             requests.post("http://0.0.0.0:8080/teams", json.dumps(teamInfo))
     else:
