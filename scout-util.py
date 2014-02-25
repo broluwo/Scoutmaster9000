@@ -15,6 +15,7 @@ import time
 import json
 import urllib2
 import re
+from collections import defaultdict
 
 # Imported: Selected Modules
 # --------------------------
@@ -45,7 +46,7 @@ def lookUpTeam(team, force):
     sSize = 0
     found = False
 
-    while found != True and sSize < 2750:
+    while not found and sSize < 2750:
         payload = {"page": "searchresults", "skip_events": "0", "skip_teams": sSize, "programs": "FRC",
                    "season_FRC": "2014", "reports": "teams", "area": "All", "results_size": "250"}
         pageRequest = requests.post(MYFIRST_SITE_ROOT, data=payload)
@@ -53,26 +54,25 @@ def lookUpTeam(team, force):
         links =  soup.find_all("a", href=re.compile("team_details"))
 
         for link in links: # find ALL THE HYPERLINKS!
-            teamNumber = "".join([str(num) for num in link.find_all(text=True)])
+            teamNumber = "".join(str(num) for num in link.find_all(text=True))
             if int(teamNumber) == team:
                 pageRequest = requests.get(MYFIRST_SITE_ROOT + link["href"])
                 soup = BeautifulSoup(pageRequest.content)
-                teamNicknameText = soup.find(text='Team Nickname')
-                teamNickTag = teamNicknameText.findNext('td')
-                teamNick = teamNickTag.get_text()
+                teamNick = soup.find(text="Team Nickname").findNext("td").get_text()
                 found = True
+                
                 teamInfo = {"number": teamNumber, "name": teamNick, "reviews": [], "matches": [], "photos": []}
                 if force == True:
                     return teamInfo
                 urllib2.urlopen("http://0.0.0.0:8080/teams", json.dumps(teamInfo))
                 break
 
-        if found == False:
+        if not found:
             print("Not found on page " + str(sSize / 250) + ".")
             sSize += 250
             print("Now checking page " + str(sSize / 250) + ".")
 
-    if found == False:
+    if not found:
         print "Team # " + str(team) + " does not exist."
         print "Please ensure it was entered correctly."
 
@@ -93,71 +93,51 @@ def lookUpRegional(regional):
                    "season_FP": "2011", "reports": "events", "area": "All", "results_size": "250"}
         pageRequest = requests.post(MYFIRST_SITE_ROOT, data=payload)
         soup = BeautifulSoup(pageRequest.content)
-        for link in soup.find_all("a"):
-            if link.get("href") and "event_details" in link.get("href"):
-                regionalName = "".join([str(num) for num in link.find_all(text=True)])
+        for link in soup.find_all("a", href=re.compile("event_details"), text=True):
+            if args.regional == "".join(str(num) for num in link):
+                pageRequest = requests.get(MYFIRST_SITE_ROOT + link.get("href"))
+                soup = BeautifulSoup(pageRequest.content)
+                
+                for link in soup.find_all('a', href=re.compile("event_teamlist|matchresults")):
+                    if "event_teamlist" in link.get("href"):
+                        regionalTeamLink = MYFIRST_SITE_ROOT + link.get("href")
+                        pageRequest = requests.get(regionalTeamLink)
+                        soup = BeautifulSoup(pageRequest.content)
 
-                if regionalName == args.regional:
-                    pageRequest = requests.get(MYFIRST_SITE_ROOT + link.get("href"))
-                    soup = BeautifulSoup(pageRequest.content)
-                    
-                    for link in soup.find_all('a'):
-                        if link.get("href") and "event_teamlist" in link.get("href"):
-                            regionalTeamLink = MYFIRST_SITE_ROOT + link.get("href")
-                            pageRequest = requests.get(MYFIRST_SITE_ROOT + link.get("href"))
-                            soup = BeautifulSoup(pageRequest.content)
+                        for link in soup.find_all('a', href=re.compile("team_details"), text=True):
+                            teamNumber = "".join(str(num) for num in link)
+                            num = int(teamNumber)
+                            mapOfTeams[teamNumber] = lookUpTeam(num, True)
 
-                            for link in soup.find_all('a'):
-                                if link.get("href") and "team_details" in link.get("href"):
-                                    teamNumber = "".join([str(num) for num in link.find_all(text=True)])
-                                    num = int(teamNumber)
-                                    print(type(num) == int)
-                                    mapOfTeams[teamNumber] = lookUpTeam(num, True)
+                    if "matchresults" in link.get("href"):
+                        regionalTeamLink = link.get("href")
+                        pageRequest = requests.get(regionalTeamLink)
+                        soup = BeautifulSoup(pageRequest.content)
+                        startDate = soup.find('table', bgcolor="black").find("tbody").findNext("tr").findNext("td").findNext("td")
 
-                        if link.get("href") and "matchresults" in link.get("href"):
-                            regionalTeamLink = link.get("href")
-                            pageRequest = requests.get(regionalTeamLink)
-                            soup = BeautifulSoup(pageRequest.content)
-                            startDate = soup.find('table', bgcolor="black").find("tbody").findNext("tr").findNext("td").findNext("td")
+                        rows = soup.find('table', style="background: black none repeat scroll 0% 50%; -moz-background-clip: initial; -moz-background-origin: initial; -moz-background-inline-policy: initial; width: 100%;").find("tbody").find_all("tr")
+                        matches, num, timeM, skipThree, redScore, blueScore = [], "", "", 0, 0, 0
+                         
+                        for row in rows:
+                            if skipThree < 3:
+                                skipThree += 1
+                                continue
 
-                            rows = soup.find('table', style="background: black none repeat scroll 0% 50%; -moz-background-clip: initial; -moz-background-origin: initial; -moz-background-inline-policy: initial; width: 100%;").find("tbody").find_all("tr")
-                            matches = []
-                            num = ""
-                            timeM = ""
-                            skipThree = 0
-                            redScore = 0
-                            blueScore = 0
+                            cells = row.find_all("td")
+                            timeM = "".join(str(cells[0].get_text())) #What is AM and PM?
+                            num = "".join(str(cells[1].get_text()))
+                            redTeam = [mapOfTeams[int(cells[i].get_text())] for i in [2,3,4]]
+                            blueTeam = [mapOfTeams[int(cells[i].get_text())] for i in [5,6,7]]
+                            redScore = int(cells[8].get_text())
+                            blueScore = int(cells[9].get_text())
 
-                             
-                            for row in rows:
-                                if skipThree < 3:
-                                    skipThree += 1
-                                    print skipThree
-                                    continue
+                            matches.append({"number": num, "type": "Qualifications", "time": "".join(timeM), "red": redTeam,
+                                "blue": blueTeam, "rScore": redScore, "bScore": blueScore, "winner": "red"})
 
-                                cells = row.find_all("td")
-                                redTeam = []
-                                blueTeam = []
-
-                                timeM = "".join(str(cells[0].get_text())) #What is AM and PM?
-                                num = "".join(str(cells[1].get_text()))
-                                redTeam.append(mapOfTeams[int(cells[2].get_text())])
-                                redTeam.append(mapOfTeams[int(cells[3].get_text())])
-                                redTeam.append(mapOfTeams[int(cells[4].get_text())])
-                                blueTeam.append(mapOfTeams[int(cells[5].get_text())])
-                                blueTeam.append(mapOfTeams[int(cells[6].get_text())])
-                                blueTeam.append(mapOfTeams[int(cells[7].get_text())])
-                                redScore = int(cells[8].get_text())
-                                blueScore = int(cells[9].get_text())
-
-                                matches.append({"number": num, "type": "Qualifications", "time": "".join(timeM), "red": redTeam,
-                                    "blue": blueTeam, "rScore": redScore, "bScore": blueScore, "winner": "red"})
-
-                            stuffToSend = {"location": "".join(args.regional), "matches": matches}
-                            urllib2.urlopen("http://0.0.0.0:8080/regionals", json.dumps(stuffToSend))
-
-                    found = True
-                    break
+                        stuffToSend = {"location": "".join(args.regional), "matches": matches}
+                        urllib2.urlopen("http://0.0.0.0:8080/regionals", json.dumps(stuffToSend))
+                found = True
+                break
     sSize += 250
 
 # Function: scrapeTeam
@@ -170,11 +150,9 @@ def scrapeTeam(matchArray, teamNumber = "", teamNumberArray = [], force = False)
     if teamNumber != "" and teamNumberArray != []:
         raise TypeError("Cannot define a teamNumber and a teamNumberArray")
     elif teamNumber == "":
-        teamJSONArray = []
-        url = ""
-        teamAdded = 0
+        teamJSONArray, url, teamAdded = [], "", 0
         for teams in teamNumberArray:
-            url = url + str(teams).strip() + ","
+            url += str(teams).strip() + ","
             teamAdded += 1
             if teamAdded > 50:
                 raw = requests.get(teamURL + url[:-1], headers = requestPayload)
@@ -183,20 +161,13 @@ def scrapeTeam(matchArray, teamNumber = "", teamNumberArray = [], force = False)
                 url = "" # WHAT!? it was matchURL WHAT
         raw = requests.get(teamURL + url[:-1], headers = requestPayload)
         teamJSONArray.append(json.loads(raw.content))
-        teamJSONArray = teamJSONArray.pop(0)
+        teamJSONArray = teamJSONArray.pop(0) #...What? Why are we throwing away the rest of the list?
         for data in teamJSONArray:
             teamNum = data["team_number"]
             teamNick = data["nickname"]
-            matches = []
-            for match in matchArray:
-                for alliance in match["blue"]:
-                    if int(alliance) == teamNum:
-                        matches.append(match)
-                        break
-                for alliance in match["red"]:
-                    if int(alliance) == teamNum:
-                        matches.append(match)
-                        break
+            matches = [match for match in matchArray 
+                       if any(int(alliance) == teamNum in match["blue"]) or
+                          any(int(alliance) == teamNum in match["red"])]
             teamInfo = {"force" : force, "number": teamNum, "name": teamNick, "reviews": [], "matches": matches, "photos": []}
             requests.post("http://0.0.0.0:8080/teams", json.dumps(teamInfo))
     else:
@@ -276,6 +247,8 @@ def scrapeRegional(regionalName, regionalYear = 2014, force = False):
 # Returns the win, tie, and lose count for each team at a regional. The data will be stored in an array of the
 # form [x,y,z] = [win, tie, lose]. 
 def getWinnerCount(matchArray):
+    blue = {"blue":0, "red":2, "tie":1}
+    red = {"red":0, "blue":2, "tie":1}
     winnerArray = {}
     for match in matchArray:
         for team in match['blue']:
@@ -283,21 +256,10 @@ def getWinnerCount(matchArray):
         for team in match['red']:
             winnerArray[team] = [0,0,0]
     for match in matchArray:
-        if match['winner'] == "blue":
-            for team in match['blue']:
-                winnerArray[team][0] = winnerArray[team][0] + 1
-            for team in match['red']:
-                winnerArray[team][2] = winnerArray[team][2] + 1
-        elif match['winner'] == "red":
-            for team in match['red']:
-                winnerArray[team][0] = winnerArray[team][0] + 1
-            for team in match['blue']:
-                winnerArray[team][2] = winnerArray[team][2] + 1
-        elif match['winner'] == "tie":
-            for team in match['red']:
-                winnerArray[team][1] = winnerArray[team][1] + 1
-            for team in match['blue']:
-                winnerArray[team][1] = winnerArray[team][1] + 1
+        for team in match["blue"]:
+            winnerArray[team][blue[match["winner"]]] += 1
+        for team in match["red"]:
+            winnerArray[team][red[match["winner"]]] += 1
     return winnerArray
 
 # Parser settings
@@ -313,27 +275,17 @@ parser.add_argument("-f", "--force",
 parser.add_argument("-y", "--year", help = "Adds a regional year option if scraping the regional", metavar = "<year #>", type = int)
 args = parser.parse_args()
 
-
 if args.team:
     for i in range(0, len(args.team)):
         args.team[i] = "frc" + str(args.team[i])
-
 if args.team and args.regional:
     print("Error:  You cannot look up a team and a regional at the same time.")
     sys.exit()
-elif args.regional and args.force and args.year:
-    scrapeRegional(args.regional, regionalYear = args.year, force = True)
-elif args.regional and args.force:
-    scrapeRegional(args.regional, force = True)
-elif args.regional and args.year:
-    scrapeRegional(args.regional, regionalYear = args.year)
 elif args.regional:
-    print args.regional
-    scrapeRegional(args.regional)
-elif args.team and args.force:
-    print args.team
-    scrapeTeam(teamNumberArray = args.team, force = True)
+    if args.year:
+        scrapeTeam(teamNumberArray=args.team, regionalYear=args.year, force=args.force)
+    else:
+        scrapeTeam(teamNumberArray=args.team, force=args.force)
 elif args.team:
     print args.team
-    scrapeTeam(teamNumberArray = args.team)
-
+    scrapeTeam(teamNumberArray=args.team, force=args.force)
