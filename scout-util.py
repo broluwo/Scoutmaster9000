@@ -32,7 +32,7 @@ sys.setdefaultencoding("utf-8")
 MYFIRST_SITE_ROOT = "https://my.usfirst.org/myarea/index.lasso"
 maxRetry = 10
 mapOfTeams = {}
-requestPayload = {'X-TBA-App-Id': 'frc449:Scoutmaster_Utilities:1'}
+requestPayload = {'X-TBA-App-Id':'frc449:Scoutmaster_Utilities:1'}
 
 # Function: LookUpTeam
 # --------------------
@@ -152,24 +152,25 @@ def scrapeTeam(matchArray, teamNumber = "", teamNumberArray = [], force = False)
     elif teamNumber == "":
         teamJSONArray, url, teamAdded = [], "", 0
         for teams in teamNumberArray:
+            print teamAdded
             url += str(teams).strip() + ","
             teamAdded += 1
             if teamAdded > 50:
                 raw = requests.get(teamURL + url[:-1], headers = requestPayload)
                 teamJSONArray.append(json.loads(raw.content))
                 teamAdded = 0
-                url = "" # WHAT!? it was matchURL WHAT
+                url = ""
         raw = requests.get(teamURL + url[:-1], headers = requestPayload)
         teamJSONArray.append(json.loads(raw.content))
-        teamJSONArray = teamJSONArray.pop(0) #...What? Why are we throwing away the rest of the list?
-        for data in teamJSONArray:
-            teamNum = data["team_number"]
-            teamNick = data["nickname"]
-            matches = [match for match in matchArray 
-                       if any(int(alliance) == teamNum for alliance in match["blue"]) or
-                          any(int(alliance) == teamNum for alliance in match["red"])]
-            teamInfo = {"force" : force, "number": teamNum, "name": teamNick, "reviews": [], "matches": matches, "photos": []}
-            requests.post("http://0.0.0.0:8080/teams", json.dumps(teamInfo))
+        for dataArray in teamJSONArray:
+            for data in dataArray:
+                teamNum = data["team_number"]
+                teamNick = data["nickname"]
+                matches = [match for match in matchArray 
+                           if any(int(alliance) == teamNum for alliance in match["blue"]) or
+                            any(int(alliance) == teamNum for alliance in match["red"])]
+                teamInfo = {"force" : force, "number": teamNum, "name": teamNick, "reviews": [], "matches": matches, "photos": []}
+                requests.post("http://0.0.0.0:8080/teams", json.dumps(teamInfo))
     else:
         raw = requests.get(teamURL + str(teamNumber).strip(), headers = requestPayload)
         data = json.loads(raw.content)
@@ -205,13 +206,11 @@ def scrapeRegional(regionalName, regionalYear = 2014, force = False):
         matchesAdded += 1
         if matchesAdded > 50:
             pageData = requests.get("http://www.thebluealliance.com/api/v1/match/details?match=" + matchURLSuffix[:-1], headers = requestPayload)
-            print pageData.content
             requestsArray.append(json.loads(pageData.content))
             matchesAdded = 0
             matchURLSuffix = ""
     if matchURLSuffix[:-1] != "":
         pageData = requests.get("http://www.thebluealliance.com/api/v1/match/details?match=" + matchURLSuffix[:-1], headers = requestPayload)
-        print pageData.content
         requestsArray.append(json.loads(pageData.content))
     matchArray = []
     teamsToScrape = []
@@ -281,11 +280,12 @@ if args.team:
 if args.team and args.regional:
     print("Error:  You cannot look up a team and a regional at the same time.")
     sys.exit()
-elif args.regional:
-    if args.year:
-        scrapeTeam(teamNumberArray=args.team, regionalYear=args.year, force=args.force)
+elif args.regional: 
+    if args.year and args.force:
+        scrapeRegional(regionalName=args.regional, regionalYear=args.year, force=args.force)
+    elif args.year:
+        scrapeRegional(regionalName=args.regional, regionalYear=args.year)
     else:
-        scrapeTeam(teamNumberArray=args.team, force=args.force)
+        scrapeRegional(teamNumberArray=args.team)
 elif args.team:
-    print args.team
     scrapeTeam(teamNumberArray=args.team, force=args.force)
