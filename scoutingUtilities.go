@@ -15,13 +15,14 @@ import (
 	"github.com/codegangsta/cli" //<-Dependency can be removed but at cost of a little reworking and lack of prettiness
 )
 
-//Utilities package scout-util.py contains all the functions to pull the teams and team data from
-//the FIRST Robotics official website.
+//Utilities package scout-util.py contains all the functions to pull the teams and team data from the Blue Alliance
+//Any structs can be found in structs.go
 
 const (
 	teamURL        = "http://www.thebluealliance.com/api/v1/teams/show?teams="
 	regionalURL    = "http://www.thebluealliance.com/api/v1/event/details?event="
 	eventsURL      = "http://www.thebluealliance.com/api/v1/events/list?year="
+	matchURL       = "http://www.thebluealliance.com/api/v1/match/details?match="
 	teamPrefix     = "frc"
 	teamPacketSize = 15
 )
@@ -39,66 +40,39 @@ var (
 	}
 )
 
-//Team is the struct that represents a team
-type Team struct {
-	Force  bool   `json:"force"`
-	Number int    `json:"team_number"`
-	Name   string `json:"nickname"`
-	//Will need to be changed to it's own struct
-	Reviews []string `json:"reviews"`
-	//Will need to be changed to it's own struct
-	Matches []int `json:"matches"`
-	//Will/Should be corrected soon
-	Photos []byte `json:"photos"`
-}
-
-//While still using a python server wrappers are needed
-type pythonTeamWrapper struct {
-	Force  *bool   `json:"force"`
-	Number *int    `json:"number"`
-	Name   *string `json:"name"`
-	//Will need to be changed to it's own struct
-	Reviews *[]string `json:"reviews"`
-	//Will need to be changed to it's own struct
-	Matches *[]int `json:"matches"`
-	//Will/Should be corrected soon
-	Photos *[]byte `json:"photos"`
-}
-
-//Current Representation of what TBA sends back.
-//Wholly unnecessary but allows me to see what I'm working with
-type teamResponse struct {
-	Name     string   `json:"name"`
-	Locality string   `json:"locality"`
-	Number   int      `json:"team_number"`
-	Region   string   `json:"region"`
-	Key      string   `json:"key"`
-	Country  string   `json:"country_name"`
-	Website  string   `json:"website"`
-	Nickname string   `json:"nickname"`
-	Events   []string `json:"events"`
-}
-
-//Current Representation of what TBA sends back.
-type eventResponse struct { //Comments go Description <TAB> Example
-	Key                 string         `json:"key"`                   //TBA event key with the format yyyy[EVENT_CODE], where yyyy is the year, and EVENT_CODE is the event code of the event.	2010sc
-	Name                string         `json:"name"`                  //Official name of event on record either provided by FIRST or organizers of offseason event.	Palmetto Regional
-	ShortName           string         `json:"short_name"`            //name but doesn't include event specifiers, such as 'Regional' or 'District'.	Palmetto
-	EventCode           string         `json:"event_code"`            //Event short code.	SC
-	EventTypeString     string         `json:"event_type_string"`     //A human readable string that defines the event type.	'Regional', 'District', 'District Championships', 'District Championship','Championship Division', 'Championship Finals', 'Offseason','Preseason', '--'
-	EventType           int            `json:"event_type"`            //An integer that represents the event type as a constant.	List of constants to event type
-	EventDistrictString string         `json:"event_district_string"` //A human readable string that defines the event's district.	'Michigan', 'Mid Atlantic', null (if regional)
-	EventDistrict       int            `json:"event_district"`        //An integer that represents the event district as a constant.	List of constants to event district
-	Year                int            `json:"year"`                  //Year the event data is for.	2010
-	Location            string         `json:"location"`              //Long form address that includes city, and state provided by FIRST	Clemson, SC
-	VenueAddress        string         `json:"venue_address"`         //Address of the event's venue, if available. Line breaks included.	Long Beach Arena\n300 East Ocean Blvd\nLong Beach, CA 90802\nUSA
-	Website             string         `json:"website"`               //The event's website, if any.	http://www.firstsv.org
-	Official            bool           `json:"official"`              //Whether this is a FIRST official event, or an offseaon event.	true
-	Teams               []teamResponse `json:"teams"`                 //List of team models that attended the event
-	// matches	//List of match models for the event.
-	// awards	//List of award models for the event.
-	// webcast	If the event has webcast data associated with it, this contains JSON data of the streams
-	// alliances []string	If we have alliance selection data for this event, this contains a JSON array of the alliances. The captain is the first team, followed by their picks, in order.
+//Returns the struct to be sent to the server
+func packageRegionalData(ev *eventResponse) Regional {
+	r := Regional{Location: ev.Name,
+		Year: ev.Year}
+	/*matchArray = []
+	teamsToScrape = []
+	for matchData in requestsArray:
+			for match in matchData:
+					num = int(match["match_number"])
+					level = str(match["competition_level"])
+					redTeam = []
+					blueTeam = []
+					teamsToScrape.append(match["alliances"]["red"]["teams"])
+					teamsToScrape.append(match["alliances"]["blue"]["teams"])
+					for i in range(0, len(match["alliances"]["red"]["teams"])):
+						redTeam.append(match["alliances"]["red"]["teams"][i][3:])
+						blueTeam.append(match["alliances"]["blue"]["teams"][i][3:])
+					redScore = int(match["alliances"]["red"]["score"])
+					blueScore = int(match["alliances"]["blue"]["score"])
+					winner = ""
+					if redScore > blueScore:
+							winner = "red"
+					elif redScore == blueScore:
+							winner = "tie"
+					else:
+							winner = "blue"
+					matchArray.append({"number": num, "type": level, "red": redTeam,"blue": blueTeam, "rScore":int(redScore), "bScore":int(blueScore), "winner":winner})
+	winnerCount = getWinnerCount(matchArray)
+	jsonData = {"location": regionalName, "matches": matchArray, "winnerCount" : winnerCount, "year" : int(regionalYear)}
+	requests.post("http://0.0.0.0:8080/regionals", json.dumps(jsonData))
+	for team in teamsToScrape:
+			scrapeTeam(matchArray, teamNumberArray = team, force = force)*/
+	return r
 }
 
 func main() {
@@ -231,8 +205,13 @@ func getData(url string, resc chan string, errc chan error) {
 		}
 		sendTeamData(teams, resc, errc)
 	} else {
-		//TODO: It's a regional, so do regional things now
-		print()
+		defer res.Body.Close()
+		var data json.RawMessage
+		//Do this instead of io.ReadAll so we don't need contiguous mem
+		panicErr(json.NewDecoder(res.Body).Decode(&data))
+		r := eventResponse{}
+		panicErr(json.Unmarshal(data, &r))
+		sendRegionalData(packageRegionalData(&r), resc, errc)
 	}
 }
 
@@ -290,34 +269,24 @@ func tossMarshalErr(a []byte, err error) []byte {
 func handleRegional(c *cli.Context) {
 	//Get rid of flag arguments before parsing
 	dataSlice := c.Args()[checkGlobalFlags(c):]
-	length := len(dataSlice)
 	//Check if there is enough params passed through before allocating mem
-	if length < 1 {
+	if len(dataSlice) < 1 {
 		log.Println("There needs to be a regional name included")
 		os.Exit(3)
 	}
-	args := make([]string, length)
-	var e error
-	for j, i := range dataSlice {
-		//Converts from string to int. If it errors out, there is malformed input.
-		//FIXME: Waste of a call? Could do a interface type assertion...
-		_, e = strconv.Atoi(i)
-		logErr("The provided teamNum needs to be an integer ->"+i, e)
-		args[j] = teamPrefix + i
-	}
 	//Allows for slice variadic
-	scrapeRegional(args...)
-	//DO SOMETHING
+	scrapeRegional(dataSlice...)
 }
 
 func scrapeRegional(regionalNames ...string) {
 	length := len(regionalNames)
 	resc, errc := make(chan string), make(chan error)
 	for i := 0; i <= length; i++ {
-		key, sig := returnRegionalURL(regionalNames[i])
-		if sig != 0 {
-			continue
-		}
+		key, _ := returnRegionalURL(regionalNames[i])
+		//Will be used later for alternative path for getting data
+		// if sig != 0 {
+		// 	continue
+		// }
 		go getData(key, resc, errc)
 	}
 	for i := 0; i < length; i++ { //Loop length amount of times to make sure i have gotten a response from each goroutine before proceeding
@@ -342,8 +311,8 @@ func returnRegionalURL(key string) (string, int) {
 		req, _ := http.NewRequest("GET", url, nil)
 		req.Header.Add("X-TBA-App-Id", "frc449:Scoutmaster_Utilities:v2")
 		res, err := client.Do(req)
-		logErr("Regional Key not found as Request Does Not Seem to Have Gone Through. Try Again Later.", err)
 		defer res.Body.Close()
+		logErr("Regional Key not found as Request Does Not Seem to Have Gone Through. Try Again Later.", err)
 		var data []json.RawMessage
 		//Do this instead of io.ReadAll so we don't need contiguous mem
 		panicErr(json.NewDecoder(res.Body).Decode(&data))
@@ -359,12 +328,11 @@ func returnRegionalURL(key string) (string, int) {
 				return regURL, 0
 			}
 		}
-		// regionalURL = "http://www.thebluealliance.com/api/v1/event/details?event=" + str(keyData[index]['key']).strip()
 	}
 	return regionalURL + val, 0
 }
 
-func sendRegionalData(regURL string) {
+func sendRegionalData(regURL Regional, resc chan string, errc chan error) {
 	//TODO: Actually Implement
 }
 
