@@ -1,8 +1,13 @@
 package main
 
+/******************************
+*TODO: FIX API MISNOMERS   *
+******************************/
+
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
@@ -17,11 +22,11 @@ import (
 
 //Utilities package scout-util.py contains all the functions to pull the teams and team data from the Blue Alliance
 //Any structs can be found in structs.go
-
 const (
+	//TODO: Update this to v2 of API
 	teamURL        = "http://www.thebluealliance.com/api/v1/teams/show?teams="
 	regionalURL    = "http://www.thebluealliance.com/api/v1/event/details?event="
-	eventsURL      = "http://www.thebluealliance.com/api/v1/events/list?year="
+	eventsURL      = "www.thebluealliance.com/api/v2/event/" //"http://www.thebluealliance.com/api/v1/events/list?year="
 	matchURL       = "http://www.thebluealliance.com/api/v1/match/details?match="
 	teamPrefix     = "frc"
 	teamPacketSize = 15
@@ -39,41 +44,6 @@ var (
 		cli.IntFlag{"year, y", year, "Change location of server"},
 	}
 )
-
-//Returns the struct to be sent to the server
-func packageRegionalData(ev *eventResponse) Regional {
-	r := Regional{Location: ev.Name,
-		Year: ev.Year}
-	/*matchArray = []
-	teamsToScrape = []
-	for matchData in requestsArray:
-			for match in matchData:
-					num = int(match["match_number"])
-					level = str(match["competition_level"])
-					redTeam = []
-					blueTeam = []
-					teamsToScrape.append(match["alliances"]["red"]["teams"])
-					teamsToScrape.append(match["alliances"]["blue"]["teams"])
-					for i in range(0, len(match["alliances"]["red"]["teams"])):
-						redTeam.append(match["alliances"]["red"]["teams"][i][3:])
-						blueTeam.append(match["alliances"]["blue"]["teams"][i][3:])
-					redScore = int(match["alliances"]["red"]["score"])
-					blueScore = int(match["alliances"]["blue"]["score"])
-					winner = ""
-					if redScore > blueScore:
-							winner = "red"
-					elif redScore == blueScore:
-							winner = "tie"
-					else:
-							winner = "blue"
-					matchArray.append({"number": num, "type": level, "red": redTeam,"blue": blueTeam, "rScore":int(redScore), "bScore":int(blueScore), "winner":winner})
-	winnerCount = getWinnerCount(matchArray)
-	jsonData = {"location": regionalName, "matches": matchArray, "winnerCount" : winnerCount, "year" : int(regionalYear)}
-	requests.post("http://0.0.0.0:8080/regionals", json.dumps(jsonData))
-	for team in teamsToScrape:
-			scrapeTeam(matchArray, teamNumberArray = team, force = force)*/
-	return r
-}
 
 func main() {
 	app := cli.NewApp()
@@ -204,15 +174,75 @@ func getData(url string, resc chan string, errc chan error) {
 			teams = append(teams, t)
 		}
 		sendTeamData(teams, resc, errc)
-	} else {
+	} else if strings.Contains(url, "event") {
 		defer res.Body.Close()
 		var data json.RawMessage
 		//Do this instead of io.ReadAll so we don't need contiguous mem
 		panicErr(json.NewDecoder(res.Body).Decode(&data))
-		r := eventResponse{}
-		panicErr(json.Unmarshal(data, &r))
-		sendRegionalData(packageRegionalData(&r), resc, errc)
+		ev := eventResponse{}
+		panicErr(json.Unmarshal(data, &ev))
+		sendRegionalData(packageRegionalData(&ev), resc, errc)
 	}
+}
+
+//Returns the struct to be sent to the server
+func packageRegionalData(ev *eventResponse) Regional {
+	r := Regional{Location: ev.Name, Year: ev.Year}
+	r.Matches, r.WinnerArray = getMatchAndWinnerData(ev.Key)
+	//Now take every key from winner's array send it off to scrape team for processing
+	// teamsURL := regionalURL + ev.Key + "/teams"
+	// for team in teamsToScrape:
+	// scrapeTeam(matchArray, teamNumberArray = team, force = force)*/
+	fmt.Println(ev.Name)
+	return r
+}
+
+func getMatchAndWinnerData(eventKey string) ([]Match, map[string][3]int) {
+	url := regionalURL + eventKey + "/matches"
+	client := &http.Client{}
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Add("X-TBA-App-Id", "frc449:Scoutmaster_Utilities:v2")
+	res, err := client.Do(req)
+	logErr("Request Does Not Seem to Have Gone Through. Try Again Later.", err)
+	matches := []Match{}
+	defer res.Body.Close()
+	var data []json.RawMessage
+	//Do this instead of io.ReadAll so we don't need contiguous mem
+	panicErr(json.NewDecoder(res.Body).Decode(&data))
+	for _, thing := range data {
+		match := matchResponse{}
+		panicErr(json.Unmarshal(thing, &match))
+		//MatchNum may not be suitable for conversion
+		a, e := strconv.Atoi(match.MatchNumber[:])
+		logErr("MatchNum can't be converted", e)
+
+		m := Match{Number: a, Type: match.CompLevel, Red: match.Alliances.Red.Teams, Blue: match.Alliances.Blue.Teams}
+		if int(match.Alliances.Red.Score) > int(match.Alliances.Blue.Score) {
+			m.Winner = "red"
+		} else if int(match.Alliances.Red.Score) < int(match.Alliances.Blue.Score) {
+			m.Winner = "blue"
+		} else {
+			m.Winner = "tie"
+		}
+		matches = append(matches, m)
+	}
+
+	blue := map[string]int{"blue": 0, "red": 2, "tie": 1}
+	red := map[string]int{"red": 0, "blue": 2, "tie": 1}
+	var winnerArray = make(map[string][3]int)
+	for _, match := range matches {
+		for _, team := range match.Blue {
+			a := winnerArray[team]
+			a[blue[match.Winner]]++
+			winnerArray[team] = a
+		}
+		for _, team := range match.Red {
+			a := winnerArray[team]
+			a[red[match.Winner]]++
+			winnerArray[team] = a
+		}
+	}
+	return matches, winnerArray
 }
 
 //This method panics out if there is a non-nil error
@@ -274,15 +304,16 @@ func handleRegional(c *cli.Context) {
 		log.Println("There needs to be a regional name included")
 		os.Exit(3)
 	}
-	//Allows for slice variadic
-	scrapeRegional(dataSlice...)
+	scrapeRegional(dataSlice)
 }
 
-func scrapeRegional(regionalNames ...string) {
+//REgional name must be surrounded by quotes because spaces are confusing
+func scrapeRegional(regionalNames []string) {
 	length := len(regionalNames)
 	resc, errc := make(chan string), make(chan error)
-	for i := 0; i <= length; i++ {
+	for i := 0; i < length; i++ {
 		key, _ := returnRegionalURL(regionalNames[i])
+		fmt.Println(key)
 		//Will be used later for alternative path for getting data
 		// if sig != 0 {
 		// 	continue
@@ -302,7 +333,7 @@ func scrapeRegional(regionalNames ...string) {
 //Accepts a slice so that changing that packetSize cascades down, with minimal work
 func returnRegionalURL(key string) (string, int) {
 	val, err := regionalKeyMap[key]
-	if err {
+	if !err {
 		// log.Println("Key Not Found", err)
 		//This means the key wasn't in our cached ones and we need to make a request
 		log.Println("Regional not found locally, checking online...")
@@ -315,7 +346,7 @@ func returnRegionalURL(key string) (string, int) {
 		logErr("Regional Key not found as Request Does Not Seem to Have Gone Through. Try Again Later.", err)
 		var data []json.RawMessage
 		//Do this instead of io.ReadAll so we don't need contiguous mem
-		panicErr(json.NewDecoder(res.Body).Decode(&data))
+		logErr("JSON couldn't marshall into struct. Check expected output versus struct format", json.NewDecoder(res.Body).Decode(&data))
 		for _, thing := range data {
 			ev := eventResponse{}
 			logErr("Malformed Input, check TBA API return to ensure nothing has changed.", json.Unmarshal(thing, &ev))
@@ -329,11 +360,21 @@ func returnRegionalURL(key string) (string, int) {
 			}
 		}
 	}
-	return regionalURL + val, 0
+	return regionalURL + strconv.Itoa(year) + val, 0
 }
 
-func sendRegionalData(regURL Regional, resc chan string, errc chan error) {
-	//TODO: Actually Implement
+func sendRegionalData(r Regional, resc chan string, errc chan error) {
+	fmt.Printf("%v", r)
+
+	res, err := http.Post(serverLocation+"/regionals", "application/json", bytes.NewReader(tossMarshalErr(json.Marshal(r))))
+
+	if err != nil {
+		log.Println("Post didn't go through for:", r.Location, ". Please check server config/location.")
+		errc <- err
+	}
+	if res != nil {
+		resc <- res.Status
+	}
 }
 
 //This takes regional names and maps them to the keys TBA uses
@@ -422,4 +463,104 @@ var regionalKeyMap = map[string]string{
 	"WPI Regional":                                                   "mawo",
 }
 
-//Inserted Lovingly with B@$# . If this prints, there should be no errors.
+//Inserted Lovingly with B@$# . If this prints, there should be no errors for the map insertion.
+
+//Team is the struct that represents a team
+type Team struct {
+	Force  bool   `json:"force"`
+	Number int    `json:"team_number"`
+	Name   string `json:"nickname"`
+	//Will need to be changed to it's own struct
+	Reviews []string `json:"reviews"`
+	//Will need to be changed to it's own struct
+	Matches []int `json:"matches"`
+	//Will/Should be corrected soon
+	Photos []byte `json:"photos"`
+}
+
+//While still using a python server wrappers are needed
+type pythonTeamWrapper struct {
+	Force  *bool   `json:"force"`
+	Number *int    `json:"number"`
+	Name   *string `json:"name"`
+	//Will need to be changed to it's own struct
+	Reviews *[]string `json:"reviews"`
+	//Will need to be changed to it's own struct
+	Matches *[]int `json:"matches"`
+	//Will/Should be corrected soon
+	Photos *[]byte `json:"photos"`
+}
+
+//Current Representation of what TBA sends back.
+//Wholly unnecessary but allows me to see what I'm working with
+type teamResponse struct {
+	Name     string   `json:"name"`
+	Locality string   `json:"locality"`
+	Number   int      `json:"team_number"`
+	Region   string   `json:"region"`
+	Key      string   `json:"key"`
+	Country  string   `json:"country_name"`
+	Website  string   `json:"website"`
+	Nickname string   `json:"nickname"`
+	Events   []string `json:"events"`
+}
+
+//Current Representation of what TBA sends back.
+type eventResponse struct { //Comments go Description <TAB> Example
+	Key                 string         `json:"key"`                   //TBA event key with the format yyyy[EVENT_CODE], where yyyy is the year, and EVENT_CODE is the event code of the event.	2010sc
+	Name                string         `json:"name"`                  //Official name of event on record either provided by FIRST or organizers of offseason event.	Palmetto Regional
+	ShortName           string         `json:"short_name"`            //name but doesn't include event specifiers, such as 'Regional' or 'District'.	Palmetto
+	EventCode           string         `json:"event_code"`            //Event short code.	SC
+	EventTypeString     string         `json:"event_type_string"`     //A human readable string that defines the event type.	'Regional', 'District', 'District Championships', 'District Championship','Championship Division', 'Championship Finals', 'Offseason','Preseason', '--'
+	EventType           int            `json:"event_type"`            //An integer that represents the event type as a constant.	List of constants to event type
+	EventDistrictString string         `json:"event_district_string"` //A human readable string that defines the event's district.	'Michigan', 'Mid Atlantic', null (if regional)
+	EventDistrict       int            `json:"event_district"`        //An integer that represents the event district as a constant.	List of constants to event district
+	Year                int            `json:"year"`                  //Year the event data is for.	2010
+	Location            string         `json:"location"`              //Long form address that includes city, and state provided by FIRST	Clemson, SC
+	VenueAddress        string         `json:"venue_address"`         //Address of the event's venue, if available. Line breaks included.	Long Beach Arena\n300 East Ocean Blvd\nLong Beach, CA 90802\nUSA
+	Website             string         `json:"website"`               //The event's website, if any.	http://www.firstsv.org
+	Official            bool           `json:"official"`              //Whether this is a FIRST official event, or an offseaon event.	true
+	Teams               []teamResponse `json:"teams"`                 //List of team models that attended the event
+	// matches	//List of match models for the event.
+	// awards	//List of award models for the event.
+	// webcast	If the event has webcast data associated with it, this contains JSON data of the streams
+	// alliances []string	If we have alliance selection data for this event, this contains a JSON array of the alliances. The captain is the first team, followed by their picks, in order.
+}
+type matchResponse struct {
+	Key         string            `json:"key"`          //TBA event key with the format yyyy[EVENT_CODE]_[COMP_LEVEL]m[MATCH_NUMBER], where yyyy is the year, and EVENT_CODE is the event code of the event, COMP_LEVEL is (qm, ef, qf, sf, f), and MATCH_NUMBER is the match number in the competition level. A set number may append the competition level if more than one match in required per set .	2010sc_qm10, 2011nc_qf1m2
+	CompLevel   string            `json:"comp_level"`   //The competition level the match was played at.	qm, ef, qf, sf, f
+	SetNumber   string            `json:"set_number"`   //The set number in a series of matches where more than one match is required in the match series.	2010sc_qf1m2, would be match 2 in quarter finals 1.
+	MatchNumber string            `json:"match_number"` //The match number of the match in the competition level.	2010sc_qm20
+	Alliances   matchAlliances    `json:"alliances"`    //A list of alliances, the teams on the alliances, and their score.
+	EventKey    string            `json:"event_key"`    //Event key of the event the match was played at.	2011sc
+	Videos      []json.RawMessage `json:"videos"`       //JSON array of videos associated with this match and corresponding information	"videos": [{"key": "xswGjxzNEoY", "type": "youtube"}, {"key": "http://videos.thebluealliance.net/2010cmp/2010cmp_f1m1.mp4", "type": "tba"}]
+	TimeString  string            `json:"time_string"`  //Time string for this match, as published on the official schedule. Of course, this may or may not be accurate, as events often run ahead or behind schedule	11:15 AM
+	Time        int               `json:"time"`         //UNIX timestamp of match time, as taken from the published schedule	1394904600
+}
+type matchAlliances struct {
+	Red  alliance `json:"red"`
+	Blue alliance `json:"blue"`
+}
+type alliance struct {
+	Score int      `json:"score"`
+	Teams []string `json:"teams"`
+}
+
+//The Match struct is how a match is represented
+type Match struct {
+	Number    int      `json:"number"`
+	Type      string   `json:"type"`
+	Red       []string `json:"red"`  //These might be ints
+	Blue      []string `json:"blue"` //These might be ints
+	RedScore  int      `json:"rScore"`
+	BlueScore int      `json:"bScore"`
+	Winner    string   `json:"winner"`
+}
+
+//Regional How the python server takes regional
+type Regional struct {
+	Location    string            `json:"location"`
+	Matches     []Match           `json:"matches"`
+	WinnerArray map[string][3]int `json:"winnerCount"`
+	Year        int               `json:"year"`
+}

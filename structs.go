@@ -72,30 +72,38 @@ type matchResponse struct {
 	CompLevel   string            `json:"comp_level"`   //The competition level the match was played at.	qm, ef, qf, sf, f
 	SetNumber   string            `json:"set_number"`   //The set number in a series of matches where more than one match is required in the match series.	2010sc_qf1m2, would be match 2 in quarter finals 1.
 	MatchNumber string            `json:"match_number"` //The match number of the match in the competition level.	2010sc_qm20
-	Alliances   [][][]string      `json:"alliances"`    //A list of alliances, the teams on the alliances, and their score.
+	Alliances   matchAlliances    `json:"alliances"`    //A list of alliances, the teams on the alliances, and their score.
 	EventKey    string            `json:"event_key"`    //Event key of the event the match was played at.	2011sc
 	Videos      []json.RawMessage `json:"videos"`       //JSON array of videos associated with this match and corresponding information	"videos": [{"key": "xswGjxzNEoY", "type": "youtube"}, {"key": "http://videos.thebluealliance.net/2010cmp/2010cmp_f1m1.mp4", "type": "tba"}]
 	TimeString  string            `json:"time_string"`  //Time string for this match, as published on the official schedule. Of course, this may or may not be accurate, as events often run ahead or behind schedule	11:15 AM
 	Time        int               `json:"time"`         //UNIX timestamp of match time, as taken from the published schedule	1394904600
 }
+type matchAlliances struct {
+	Red  alliance `json:"red"`
+	Blue alliance `json:"blue"`
+}
+type alliance struct {
+	Score int      `json:"score"`
+	Teams []string `json:"teams"`
+}
 
-//The Match struct is how a match is represented What they gon sa
+//The Match struct is how a match is represented
 type Match struct {
-	Number    int    `json:"number"`
-	Type      string `json:"type"`
-	Red       []int  `json:"red"`
-	Blue      []int  `json:"blue"`
-	RedScore  int    `json:"rScore"`
-	BlueScore int    `json:"bScore"`
-	Winner    string `json:"winner"`
+	Number    int      `json:"number"`
+	Type      string   `json:"type"`
+	Red       []string `json:"red"`  //These might be ints
+	Blue      []string `json:"blue"` //These might be ints
+	RedScore  int      `json:"rScore"`
+	BlueScore int      `json:"bScore"`
+	Winner    string   `json:"winner"`
 }
 
 //Regional How the python server takes regional
 type Regional struct {
-	Location    string  `json:"location"`
-	Matches     []Match `json:"matches"`
-	WinnerArray []int   `json:"winnerCount"`
-	Year        int     `json:"year"`
+	Location    string            `json:"location"`
+	Matches     []Match           `json:"matches"`
+	WinnerArray map[string][3]int `json:"winnerCount"`
+	Year        int               `json:"year"`
 }
 
 //end scoutingUtilities Struct
