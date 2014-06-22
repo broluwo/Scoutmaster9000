@@ -27,7 +27,7 @@ const (
 	eventsURL   = "http://www.thebluealliance.com/api/v2/events/" //"http://www.thebluealliance.com/api/v1/events/list?year="
 	teamPrefix  = "frc"
 	headerName  = "X-TBA-App-Id"
-	headerValue = "frc449:Scoutmaster_Utilities:v2"
+	headerValue = "frc449:Scoutmaster_Utilities:v0.2"
 )
 
 //Similar to constants but are changeable by flags.
@@ -156,10 +156,13 @@ func getData(url string, resc chan string, errc chan error) {
 	var data json.RawMessage
 	//Do this instead of io.ReadAll so we don't need contiguous mem
 	logErr("Malformed Input. Check TBA API for changes.", json.NewDecoder(res.Body).Decode(&data))
-
 	if strings.Contains(url, teamURL) {
 		t := Team{Force: force}
 		logErr("Ensure Team struct still matches up with data.", json.Unmarshal(data, &t))
+		if t.Number == 0 {
+			log.Println("Provided Team Number does not exist")
+		}
+		//We don't do an else because we need the program to return an err so that scrapeTeam does not block inifinitely
 		sendTeamData(t, resc, errc)
 	} else if strings.Contains(url, regionalURL) {
 		ev := eventResponse{}
@@ -338,6 +341,8 @@ func returnRegionalURL(key string) string {
 				return regionalURL + ev.Key
 			}
 		}
+		log.Println("Regional Couldn't be found. Is this key correct? -> " + key)
+		os.Exit(3)
 	}
 	return regionalURL + strconv.Itoa(year) + val
 }
