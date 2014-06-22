@@ -1,5 +1,10 @@
 package main
 
+//Requires at least go1.1, the higher the version the better
+/********************************************************************************
+ *TODO: Possibly Refactor all synchronization to use sync.Wait.                 *
+ *TODO: Update README.md with instructions on how to use this.                  *
+ ********************************************************************************/
 import (
 	"bytes"
 	"encoding/json"
@@ -11,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codegangsta/cli" //<-Dependency can be removed but at cost of a little reworking and lack of prettiness
+	"github.com/codegangsta/cli" //<-Dependency can be removed but at cost of reworking and lack of prettiness
 )
 
 //Utilities package scout-util.py contains all the functions to pull the teams and team data from the Blue Alliance
@@ -21,6 +26,8 @@ const (
 	regionalURL = "http://www.thebluealliance.com/api/v2/event/"  //"http://www.thebluealliance.com/api/v1/event/details?event="
 	eventsURL   = "http://www.thebluealliance.com/api/v2/events/" //"http://www.thebluealliance.com/api/v1/events/list?year="
 	teamPrefix  = "frc"
+	headerName  = "X-TBA-App-Id"
+	headerValue = "frc449:Scoutmaster_Utilities:v2"
 )
 
 //Similar to constants but are changeable by flags.
@@ -60,7 +67,7 @@ func main() {
 			Action:      handleRegional,
 		},
 		{
-			Name:        "listRegional",
+			Name:        "listRegionals",
 			ShortName:   "lr",
 			Description: "Lists cached Regionals.",
 			Usage:       "scoutingUtilities lr",
@@ -83,7 +90,7 @@ func checkGlobalFlags(c *cli.Context) int {
 	if c.Bool("force") { // If the force flag has been set
 		force = true
 	}
-	if c.String("server") != "http://0.0.0.0:8080" {
+	if c.String("server") != serverLocation {
 		u, err := url.Parse(c.Args()[index])
 		logErr("URL invalid. Ensure you attatched a scheme, i.e. http:// or https://", err)
 		serverLocation = u.String()
@@ -122,11 +129,7 @@ func handleTeam(c *cli.Context) {
 	scrapeTeam(args...)
 }
 
-// Function: scrapeTeam
-// ------------------------
-// Employs the Blue Alliance API and generates the JSON data for the input team given by the team's
-// number. The teamNumber should be the official team number meaning it must be in the form of frc###. It
-// will then dump everything to the Scoutmaster servers.
+//scrapeTeam takes a slice of team keys and sends them off to be retrieved and posted, blocking to print the results of their conquests
 func scrapeTeam(teamNums ...string) {
 	length := len(teamNums)
 	resc, errc := make(chan string), make(chan error)
@@ -146,7 +149,7 @@ func scrapeTeam(teamNums ...string) {
 func getData(url string, resc chan string, errc chan error) {
 	client := &http.Client{}
 	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Add("X-TBA-App-Id", "frc449:Scoutmaster_Utilities:v2")
+	req.Header.Add(headerName, headerValue)
 	res, err := client.Do(req)
 	logErr("Request Does Not Seem to Have Gone Through. Try Again Later.", err)
 	defer res.Body.Close()
@@ -154,54 +157,49 @@ func getData(url string, resc chan string, errc chan error) {
 	//Do this instead of io.ReadAll so we don't need contiguous mem
 	logErr("Malformed Input. Check TBA API for changes.", json.NewDecoder(res.Body).Decode(&data))
 
-	if strings.Contains(url, "team") {
+	if strings.Contains(url, teamURL) {
 		t := Team{Force: force}
 		logErr("Ensure Team struct still matches up with data.", json.Unmarshal(data, &t))
 		sendTeamData(t, resc, errc)
-	} else if strings.Contains(url, "event") {
+	} else if strings.Contains(url, regionalURL) {
 		ev := eventResponse{}
 		logErr("Ensure EventResponse struct still matches up with TBA API.", json.Unmarshal(data, &ev))
-		sendRegionalData(packageRegionalData(&ev), resc, errc)
+		r := Regional{Location: ev.Name, Year: ev.Year}
+		r.Matches, r.WinnerArray = getMatchAndWinnerData(ev.Key)
+		go sendRegionalData(r, resc, errc)
+		teamsToScrape := make([]string, 0, len(r.WinnerArray))
+		for value := range r.WinnerArray {
+			teamsToScrape = append(teamsToScrape, value)
+		}
+		scrapeTeam(teamsToScrape...)
 	}
-}
-
-//Returns the struct to be sent to the server
-func packageRegionalData(ev *eventResponse) Regional {
-	r := Regional{Location: ev.Name, Year: ev.Year}
-	r.Matches, r.WinnerArray = getMatchAndWinnerData(ev.Key)
-	//Now take every key from winner's array send it off to scrape team for processing
-	// teamsURL := regionalURL + ev.Key + "/teams"
-	// for team in teamsToScrape:
-	// scrapeTeam(matchArray, teamNumberArray = team, force = force)*/
-	return r
 }
 
 func getMatchAndWinnerData(eventKey string) ([]Match, map[string][3]int) {
 	url := regionalURL + eventKey + "/matches"
 	client := &http.Client{}
 	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Add("X-TBA-App-Id", "frc449:Scoutmaster_Utilities:v2")
+	req.Header.Add(headerName, headerValue)
 	res, err := client.Do(req)
 	logErr("Request Does Not Seem to Have Gone Through. Try Again Later.", err)
 	matches := []Match{}
 	defer res.Body.Close()
 	var data []json.RawMessage
 	//Do this instead of io.ReadAll so we don't need contiguous mem
-	panicErr(json.NewDecoder(res.Body).Decode(&data))
+	logErr("Ensure TBA API is returning an array of matches.", json.NewDecoder(res.Body).Decode(&data))
 	for _, thing := range data {
 		match := matchResponse{}
-		panicErr(json.Unmarshal(thing, &match))
-		//MatchNum may not be suitable for conversion
-		// a, e := strconv.Atoi(match.MatchNumber[:])
-		// logErr("MatchNum can't be converted", e)
+		logErr("Ensure TBA API and matchResponse struct are reconciable.", json.Unmarshal(thing, &match))
 		redTeams := make([]int, 3)
 		blueTeams := make([]int, 3)
+		//Convert keys e.g. "frc449" to ints e.g 449
 		for i, j := range match.Alliances.Red.Teams {
 			redTeams[i], err = strconv.Atoi(strings.TrimPrefix(j, teamPrefix))
 			if err != nil {
 				logErr("Couldn't convert frc team into an int.", err)
 			}
 		}
+		//Convert keys e.g. "frc449" to ints e.g 449
 		for i, j := range match.Alliances.Blue.Teams {
 			blueTeams[i], err = strconv.Atoi(strings.TrimPrefix(j, teamPrefix))
 			if err != nil {
@@ -219,7 +217,7 @@ func getMatchAndWinnerData(eventKey string) ([]Match, map[string][3]int) {
 		}
 		matches = append(matches, m)
 	}
-
+	//Winner Code Below
 	blue := map[string]int{"blue": 0, "red": 2, "tie": 1}
 	red := map[string]int{"red": 0, "blue": 2, "tie": 1}
 	var winnerArray = make(map[string][3]int)
@@ -258,7 +256,7 @@ func logErr(s string, err error) {
 func sendTeamData(team Team, resc chan string, errc chan error) {
 	//this is so freaking ugly
 	res, err := http.Post(serverLocation+"/teams", "application/json",
-		bytes.NewReader(tossMarshalErr(json.Marshal(pythonWrapTeam(team)))))
+		bytes.NewReader(tossMarshalErr(json.Marshal(pythonWrapTeam(team))))) //If it panics here it was "Unable to encode Team struct."
 
 	if err != nil {
 		log.Println("Request didn't go through for:", team.Number, ". Please check server availability(config/location/online).")
@@ -298,17 +296,13 @@ func handleRegional(c *cli.Context) {
 	scrapeRegional(dataSlice)
 }
 
-//REgional name must be surrounded by quotes because spaces are confusing
+//Regional name must be surrounded by quotes because spaces are confusing
+//scrapeRegional takes a slice of regionalNames and sends them off to be retrieved and posted, blocking to print the results of their conquests
 func scrapeRegional(regionalNames []string) {
 	length := len(regionalNames)
 	resc, errc := make(chan string), make(chan error)
 	for i := 0; i < length; i++ {
-		key, _ := returnRegionalURL(regionalNames[i])
-		//Will be used later for alternative path for getting data
-		// if sig != 0 {
-		// 	continue
-		// }
-		go getData(key, resc, errc)
+		getData(returnRegionalURL(regionalNames[i]), resc, errc)
 	}
 	for i := 0; i < length; i++ { //Loop length amount of times to make sure i have gotten a response from each goroutine before proceeding
 		select { // Force this for loop to wait for a response from either errc(error channel) or resc (the response channel)
@@ -321,7 +315,7 @@ func scrapeRegional(regionalNames []string) {
 }
 
 //Accepts a slice so that changing that packetSize cascades down, with minimal work
-func returnRegionalURL(key string) (string, int) {
+func returnRegionalURL(key string) string {
 	val, err := regionalKeyMap[key]
 	if !err {
 		//This means the key wasn't in our cached ones and we need to make a request
@@ -329,7 +323,7 @@ func returnRegionalURL(key string) (string, int) {
 		url := eventsURL + strconv.Itoa(year)
 		client := &http.Client{}
 		req, _ := http.NewRequest("GET", url, nil)
-		req.Header.Add("X-TBA-App-Id", "frc449:Scoutmaster_Utilities:v2")
+		req.Header.Add(headerName, headerValue)
 		res, err := client.Do(req)
 		defer res.Body.Close()
 		logErr("Regional Key not found as Request Does Not Seem to Have Gone Through. Try Again Later.", err)
@@ -341,19 +335,15 @@ func returnRegionalURL(key string) (string, int) {
 			logErr("Malformed Input, check TBA API return to ensure nothing has changed.", json.Unmarshal(thing, &ev))
 			if ev.Name == key {
 				//Stupid as at this point we have the object already, but for compatability lets go with it
-				//Launch go func and skip the get data part
-				regURL := regionalURL + ev.Key
-				// go sendRegionalData(regURL)
-				// return "",1
-				return regURL, 0
+				return regionalURL + ev.Key
 			}
 		}
 	}
-	return regionalURL + strconv.Itoa(year) + val, 0
+	return regionalURL + strconv.Itoa(year) + val
 }
 
 func sendRegionalData(r Regional, resc chan string, errc chan error) {
-	res, err := http.Post(serverLocation+"/regionals", "application/json", bytes.NewReader(tossMarshalErr(json.Marshal(r))))
+	res, err := http.Post(serverLocation+"/regionals", "application/json", bytes.NewReader(tossMarshalErr(json.Marshal(r)))) //If it panics here it was "Unable to encode Regional struct."
 
 	if err != nil {
 		log.Println("Post didn't go through for:", r.Location, ". Please check server config/location.")
