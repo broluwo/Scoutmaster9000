@@ -162,7 +162,7 @@ func getData(url string, resc chan string, errc chan error) {
 		if t.Number == 0 {
 			log.Println("Provided Team Number does not exist")
 		}
-		//We don't do an else because we need the program to return an err so that scrapeTeam does not block inifinitely
+		//We don't do an else because we need the program to return an err so that scrapeTeam does not block infinitely
 		sendTeamData(t, resc, errc)
 	} else if strings.Contains(url, regionalURL) {
 		ev := eventResponse{}
