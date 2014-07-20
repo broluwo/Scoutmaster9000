@@ -5,7 +5,6 @@ import "encoding/json"
 //Structs.go simply holds all the structs that are being used
 
 //Start scoutingUtilities structs
-
 //Team is the struct that represents a team
 type Team struct {
 	Force  bool   `json:"force"`
@@ -20,7 +19,7 @@ type Team struct {
 }
 
 //While still using a python server wrappers are needed
-type pythonTeamWrapper struct {
+type PythonTeamWrapper struct {
 	Force  *bool   `json:"force"`
 	Number *int    `json:"number"`
 	Name   *string `json:"name"`
@@ -34,7 +33,7 @@ type pythonTeamWrapper struct {
 
 //Current Representation of what TBA sends back.
 //Wholly unnecessary but allows me to see what I'm working with
-type teamResponse struct {
+type TeamResponse struct {
 	Name     string   `json:"name"`
 	Locality string   `json:"locality"`
 	Number   int      `json:"team_number"`
@@ -47,8 +46,8 @@ type teamResponse struct {
 }
 
 //Current Representation of what TBA sends back.
-type eventResponse struct { //Comments go Description <TAB> Example
-	Alliances           []finalAlliance   `json:"alliances"`             //If we have alliance selection data for this event, this contains a JSON array of the alliances. The captain is the first team, followed by their picks, in order.
+type EventResponse struct { //Comments go Description <TAB> Example
+	Alliances           []FinalAlliance   `json:"alliances"`             //If we have alliance selection data for this event, this contains a JSON array of the alliances. The captain is the first team, followed by their picks, in order.
 	Key                 string            `json:"key"`                   //TBA event key with the format yyyy[EVENT_CODE], where yyyy is the year, and EVENT_CODE is the event code of the event.	2010sc
 	Name                string            `json:"name"`                  //Official name of event on record either provided by FIRST or organizers of offseason event.	Palmetto Regional
 	ShortName           string            `json:"short_name"`            //name but doesn't include event specifiers, such as 'Regional' or 'District'.	Palmetto
@@ -62,49 +61,49 @@ type eventResponse struct { //Comments go Description <TAB> Example
 	VenueAddress        string            `json:"venue_address"`         //Address of the event's venue, if available. Line breaks included.	Long Beach Arena\n300 East Ocean Blvd\nLong Beach, CA 90802\nUSA
 	Website             string            `json:"website"`               //The event's website, if any.	http://www.firstsv.org
 	Official            bool              `json:"official"`              //Whether this is a FIRST official event, or an offseaon event.	true
-	Teams               []teamResponse    `json:"teams"`                 //List of team models that attended the event
+	Teams               []TeamResponse    `json:"teams"`                 //List of team models that attended the event
 	Webcast             []json.RawMessage `json:"webcast"`               //If the event has webcast data associated with it, this contains JSON data of the streams
 	EndDate             string            `json:"end_date"`              //Day the event ends in string format	"2014-03-29"
 	StartDate           string            `json:"start_date"`            //Day the event starts in string format	"2014-03-27"
 	//facebook_eid null
 }
-type finalAlliance struct {
+type FinalAlliance struct {
 	Declines []string `json:"declines"`
 	Picks    []string `json:"picks"`
 }
-type matchResponse struct {
+type MatchResponse struct {
 	Key         string         `json:"key"`          //TBA event key with the format yyyy[EVENT_CODE]_[COMP_LEVEL]m[MATCH_NUMBER], where yyyy is the year, and EVENT_CODE is the event code of the event, COMP_LEVEL is (qm, ef, qf, sf, f), and MATCH_NUMBER is the match number in the competition level. A set number may append the competition level if more than one match in required per set .	2010sc_qm10, 2011nc_qf1m2
 	CompLevel   string         `json:"comp_level"`   //The competition level the match was played at.	qm, ef, qf, sf, f
 	SetNumber   int            `json:"set_number"`   //The set number in a series of matches where more than one match is required in the match series.	2010sc_qf1m2, would be match 2 in quarter finals 1.
 	MatchNumber int            `json:"match_number"` //The match number of the match in the competition level.	2010sc_qm20
-	Alliances   matchAlliances `json:"alliances"`    //A list of alliances, the teams on the alliances, and their score.
+	Alliances   MatchAlliances `json:"alliances"`    //A list of alliances, the teams on the alliances, and their score.
 	EventKey    string         `json:"event_key"`    //Event key of the event the match was played at.	2011sc
-	Videos      []videoLink    `json:"videos"`       //JSON array of videos associated with this match and corresponding information	"videos": [{"key": "xswGjxzNEoY", "type": "youtube"}, {"key": "http://videos.thebluealliance.net/2010cmp/2010cmp_f1m1.mp4", "type": "tba"}]
+	Videos      []VideoLink    `json:"videos"`       //JSON array of videos associated with this match and corresponding information	"videos": [{"key": "xswGjxzNEoY", "type": "youtube"}, {"key": "http://videos.thebluealliance.net/2010cmp/2010cmp_f1m1.mp4", "type": "tba"}]
 	TimeString  string         `json:"time_string"`  //Time string for this match, as published on the official schedule. Of course, this may or may not be accurate, as events often run ahead or behind schedule	11:15 AM
 	Time        string         `json:"time"`         //UNIX timestamp of match time, as taken from the published schedule	1394904600
 }
-type videoLink struct {
+type VideoLink struct {
 	Type string `json:"type"`
 	Key  string `json:"key"`
 }
-type matchAlliances struct {
-	Red  alliance `json:"red"`
-	Blue alliance `json:"blue"`
+type MatchAlliances struct {
+	Red  Alliance `json:"red"`
+	Blue Alliance `json:"blue"`
 }
-type alliance struct {
+type Alliance struct {
 	Score int      `json:"score"`
 	Teams []string `json:"teams"`
 }
 
 //The Match struct is how a match is represented
 type Match struct {
-	Number    int      `json:"number"`
-	Type      string   `json:"type"`
-	Red       []string `json:"red"`  //These might be ints
-	Blue      []string `json:"blue"` //These might be ints
-	RedScore  int      `json:"rScore"`
-	BlueScore int      `json:"bScore"`
-	Winner    string   `json:"winner"`
+	Number    int    `json:"number"`
+	Type      string `json:"type"`
+	Red       []int  `json:"red"` //These should be strings in next v
+	Blue      []int  `json:"blue"`
+	RedScore  int    `json:"rScore"`
+	BlueScore int    `json:"bScore"`
+	Winner    string `json:"winner"`
 }
 
 //Regional How the python server takes regional
