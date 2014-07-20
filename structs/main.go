@@ -1,4 +1,4 @@
-package scoutingUtilities
+package structs
 
 import "encoding/json"
 
