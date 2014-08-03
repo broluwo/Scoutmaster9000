@@ -4,14 +4,14 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/broluwo/Scoutmaster9000/structs"
+	sts "github.com/broluwo/Scoutmaster9000/structs" // Renaming structs to sts for faster typing
 	"github.com/gorilla/mux"
 )
 
 var (
-	routes = []structs.Route{
-		Route{"/user/{name:[a-z]+}", userHandler, []string{"GET", "POST"}},
-		Route{"/team/{teamNum:[0-9]+}", teamHandler, []string{"GET", "POST"}},
+	routes = []sts.Route{
+		sts.Route{"/user/{name:[a-z]+}", userHandler, []string{"GET", "POST"}},
+		sts.Route{"/team/{teamNum:[0-9]+}", teamHandler, []string{"GET", "POST"}},
 	}
 )
 
