@@ -1,10 +1,12 @@
 package structs
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"net/http"
+)
 
-//Structs.go simply holds all the structs that are being used
+//Structs.go simply holds all the structs that are being used by Scoutmaster9000
 
-//Start scoutingUtilities structs
 //Team is the struct that represents a team
 type Team struct {
 	Force  bool   `json:"force"`
@@ -18,7 +20,7 @@ type Team struct {
 	Photos []byte `json:"photos"`
 }
 
-//While still using a python server wrappers are needed
+//PythonTeamWrapper is necessary for the python version of the server
 type PythonTeamWrapper struct {
 	Force  *bool   `json:"force"`
 	Number *int    `json:"number"`
@@ -31,7 +33,7 @@ type PythonTeamWrapper struct {
 	Photos *[]byte `json:"photos"`
 }
 
-//Current Representation of what TBA sends back.
+//TeamResponse is the Current Representation of what TBA sends back.
 //Wholly unnecessary but allows me to see what I'm working with
 type TeamResponse struct {
 	Name     string   `json:"name"`
@@ -45,7 +47,7 @@ type TeamResponse struct {
 	Events   []string `json:"events"`
 }
 
-//Current Representation of what TBA sends back.
+//EventResponse is the current Representation of what TBA sends back.
 type EventResponse struct { //Comments go Description <TAB> Example
 	Alliances           []FinalAlliance   `json:"alliances"`             //If we have alliance selection data for this event, this contains a JSON array of the alliances. The captain is the first team, followed by their picks, in order.
 	Key                 string            `json:"key"`                   //TBA event key with the format yyyy[EVENT_CODE], where yyyy is the year, and EVENT_CODE is the event code of the event.	2010sc
@@ -67,10 +69,14 @@ type EventResponse struct { //Comments go Description <TAB> Example
 	StartDate           string            `json:"start_date"`            //Day the event starts in string format	"2014-03-27"
 	//facebook_eid null
 }
+
+//FinalAlliance is the represntation of the final alliance selection process
 type FinalAlliance struct {
 	Declines []string `json:"declines"`
 	Picks    []string `json:"picks"`
 }
+
+//MatchResponse is the representation of what is sent by TBA
 type MatchResponse struct {
 	Key         string         `json:"key"`          //TBA event key with the format yyyy[EVENT_CODE]_[COMP_LEVEL]m[MATCH_NUMBER], where yyyy is the year, and EVENT_CODE is the event code of the event, COMP_LEVEL is (qm, ef, qf, sf, f), and MATCH_NUMBER is the match number in the competition level. A set number may append the competition level if more than one match in required per set .	2010sc_qm10, 2011nc_qf1m2
 	CompLevel   string         `json:"comp_level"`   //The competition level the match was played at.	qm, ef, qf, sf, f
@@ -82,14 +88,20 @@ type MatchResponse struct {
 	TimeString  string         `json:"time_string"`  //Time string for this match, as published on the official schedule. Of course, this may or may not be accurate, as events often run ahead or behind schedule	11:15 AM
 	Time        string         `json:"time"`         //UNIX timestamp of match time, as taken from the published schedule	1394904600
 }
+
+//VideoLink is the struct that holds the data needed to link to a YT video.
 type VideoLink struct {
 	Type string `json:"type"`
 	Key  string `json:"key"`
 }
+
+//MatchAlliances are the two types of Alliances per match
 type MatchAlliances struct {
 	Red  Alliance `json:"red"`
 	Blue Alliance `json:"blue"`
 }
+
+//Alliance is a representation of the subset of teams in a match
 type Alliance struct {
 	Score int      `json:"score"`
 	Teams []string `json:"teams"`
@@ -114,4 +126,12 @@ type Regional struct {
 	Year        int               `json:"year"`
 }
 
-//end scoutingUtilities Struct
+//Route is the struct that defines the properties we use for the routes we need
+//handled by the new mux router
+type Route struct {
+	Route   string
+	Handler func(http.ResponseWriter, *http.Request)
+	Methods []string
+}
+
+//end struct files
