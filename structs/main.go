@@ -1,11 +1,12 @@
+//Package structs holds the the structs which the various parts of Scoutmaster
+//9000 will be using. It's done this way for the sake of centralization as well
+//as peace of mind.
 package structs
 
 import (
 	"encoding/json"
 	"net/http"
 )
-
-//Structs.go simply holds all the structs that are being used by Scoutmaster9000
 
 //Team is the struct that represents a team
 type Team struct {
@@ -133,5 +134,8 @@ type Route struct {
 	Handler func(http.ResponseWriter, *http.Request)
 	Methods []string
 }
+
+//Routes ...
+type Routes []Route
 
 //end struct files

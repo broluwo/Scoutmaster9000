@@ -1,10 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	sts "github.com/broluwo/Scoutmaster9000/structs" // Renaming structs to sts for convenience
 	"github.com/gorilla/mux"
@@ -12,50 +12,73 @@ import (
 )
 
 const (
-	mongoDefaultURI = "127.0.0.1:27017"
+	mongoDefaultURI = "127.0.0.1"
+	//NotFound is the constant for a 404 page, used in the NotFoundHandler
+	NotFound = iota + 404
+	//NotSupported == 405
+	NotSupported
 )
+
+//NotFoundHandler for 404 and 405 errors depending on the switching of the Method value
+type NotFoundHandler struct {
+	Method int
+}
+
+//Server ...
+type Server struct {
+	Session  *mgo.Session
+	DBURI    string
+	Routes   sts.Routes
+	NotThere NotFoundHandler
+}
 
 var (
-	routes = []sts.Route{
-		sts.Route{"/user/{name:[a-z]+}", userHandler, []string{"GET", "POST"}},
-		sts.Route{"/team/{teamNum:[0-9]+}", teamHandler, []string{"GET", "POST"}},
+	routes = sts.Routes{
+		{"/user/{name:[a-z]+}", userHandler, []string{"GET", "POST"}},
+		{"/team/{teamNum:[0-9]+}", teamHandler, []string{"GET", "POST"}},
 	}
-	session *mgo.Session
+
+	s = Server{}
 )
 
-//mongo default on 27017
 func main() {
-	var err error
-	session, err = mgo.Dial(mongoDefaultURI)
-	if err != nil {
-		log.Printf("Can't find mongodb, %v\n", err)
-		os.Exit(3)
-	}
-	defer session.Close()
-	// Ensure that any query that changes data is processed without error
-	//Set to nil for faster throughput but no error checking
-	session.SetSafe(&mgo.Safe{})
-
-	dummyWrite("scoutServer", "team")
-	http.Handle("/", initHandlers())
+	serverInit()
+	defer s.Session.Close()
+	http.Handle("/", s.initHandlers())
 	log.Println("Listening...")
 	http.ListenAndServe(":9000", nil)
 
 }
-func setupDB() {
+
+func serverInit() {
+	s.setupDB()
+	s.Routes = routes
+	s.NotThere = NotFoundHandler{NotFound}
+	s.dummyWrite("scoutServer", "team")
+}
+
+func (s *Server) setupDB() {
+	s.DBURI = mongoDefaultURI
 	var err error
-	session, err = mgo.Dial(mongoDefaultURI)
+	di := &mgo.DialInfo{
+		Addrs:    []string{s.DBURI},
+		Direct:   true,
+		Timeout:  time.Duration(30 * time.Second),
+		FailFast: true,
+	}
+	s.Session, err = mgo.DialWithInfo(di)
 	if err != nil {
 		log.Printf("Can't find Mongodb.\n Ensure that it is running and you have the correct address., %v\n", err)
 		os.Exit(3)
 	}
-	defer session.Close()
 	// Ensure that any query that changes data is processed without error
 	//Set to nil for faster throughput but no error checking
-	session.SetSafe(&mgo.Safe{})
-
+	s.Session.SetSafe(&mgo.Safe{})
+	s.Session.SetMode(mgo.Monotonic, true)
 }
-func dummyWrite(dbName string, collectionName string) {
+
+func (s *Server) dummyWrite(dbName string, collectionName string) {
+	session := s.Session.Copy()
 	collection := session.DB(dbName).C(collectionName)
 	document := sts.Team{
 		//Team is the struct that represents a team
@@ -85,29 +108,49 @@ func dummyWrite(dbName string, collectionName string) {
 //Write writes data to the MongoDB instance
 //Consider using bulk api
 //http://blog.mongodb.org/post/84922794768/mongodbs-new-bulk-api
-func Write(collection *mgo.Collection, data ...interface{}) {
+func (s *Server) Write(collection *mgo.Collection, data ...interface{}) {}
 
-}
-
-func initHandlers() *mux.Router {
+func (s *Server) initHandlers() *mux.Router {
 	router := mux.NewRouter()
-	for _, value := range routes {
+	for _, value := range s.Routes {
 		router.HandleFunc(value.Route, value.Handler).Methods(value.Methods...)
 	}
+	router.NotFoundHandler = NotFoundHandler{}
 	return router
 }
 
-func rootHandler(w http.ResponseWriter, req *http.Request) {
+func (p NotFoundHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	switch p.Method {
+	case NotSupported:
+		w.Write([]byte("405: Method Not Supported, man"))
+		p.Method = NotFound
+		break
+	default:
+		w.Write([]byte("404 page not found, man"))
+		break
+	}
 }
+
+func rootHandler(w http.ResponseWriter, req *http.Request) {}
 
 func teamHandler(w http.ResponseWriter, req *http.Request) {
-	// params := mux.Vars(req)
-	// name := params["teamNum"]
-
-	w.Write([]byte("Hello " + dummyRead("scoutServer", "team")))
+	switch req.Method {
+	case "GET":
+		// params := mux.Vars(req)
+		// name := params["teamNum"]
+		w.Write([]byte("Hello " + s.dummyRead("scoutServer", "team")))
+		break
+	case "POST":
+		break
+	default:
+		s.NotThere.Method = NotSupported
+		s.NotThere.ServeHTTP(w, req)
+		break
+	}
 }
 
-func dummyRead(dbName string, collectionName string) string {
+func (s *Server) dummyRead(dbName string, collectionName string) string {
+	session := s.Session.Copy()
 	collection := session.DB(dbName).C(collectionName)
 	index := mgo.Index{
 		Key:        []string{"Number"},
@@ -127,12 +170,23 @@ func dummyRead(dbName string, collectionName string) string {
 		log.Printf("Can't read document, %v\n", err)
 		os.Exit(3)
 	}
-	fmt.Println(result)
+	log.Println(result)
 	return result.Name
 }
 
 func userHandler(w http.ResponseWriter, req *http.Request) {
-	params := mux.Vars(req)
-	name := params["name"]
-	w.Write([]byte("Hello " + name))
+	switch req.Method {
+	case "GET":
+		params := mux.Vars(req)
+		name := params["name"]
+		w.Write([]byte("Hello " + name))
+		break
+	case "POST":
+		break
+	default:
+		s.NotThere.Method = NotSupported
+		s.NotThere.ServeHTTP(w, req)
+		break
+
+	}
 }
