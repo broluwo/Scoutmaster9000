@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/json"
+	"log"
 	"net/http"
 
+	sts "github.com/broluwo/Scoutmaster9000/structs"
 	"github.com/gorilla/mux"
 )
 
@@ -24,6 +27,15 @@ func specTeamHandler(w http.ResponseWriter, req *http.Request) {
 func genTeamHandler(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case "POST":
+		decoder := json.NewDecoder(req.Body)
+		defer req.Body.Close()
+		var t sts.Team
+		err := decoder.Decode(&t)
+		if err != nil {
+			panic(err)
+		}
+		log.Println(t.Name)
+		http.Error(w, http.StatusText(http.StatusCreated), http.StatusCreated)
 		break
 	case "PUT":
 		break
@@ -89,9 +101,18 @@ func specRegionalHandler(w http.ResponseWriter, req *http.Request) {
 func genRegionalHandler(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case "GET":
-
+		//501 error
 		break
 	case "POST":
+		decoder := json.NewDecoder(req.Body)
+		defer req.Body.Close()
+		var r sts.Regional
+		err := decoder.Decode(&r)
+		if err != nil {
+			panic(err)
+		}
+		log.Println(r)
+		http.Error(w, http.StatusText(http.StatusCreated), http.StatusCreated)
 		break
 	case "PUT":
 		break

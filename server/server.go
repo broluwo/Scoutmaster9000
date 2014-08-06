@@ -36,8 +36,8 @@ var (
 		//literal. \\w means match any word character including letters, numbers,
 		//and underscores
 		{"/user", "/{name:[\\w]+}", genUserHandler, specUserHandler},
-		{"/team", "/{teamNum:[0-9]+}", genTeamHandler, specTeamHandler},
-		//TODO: Remove s from regionals in a bit
+		{"/teams", "/{teamNum:[0-9]+}", genTeamHandler, specTeamHandler},
+		//TODO: Remove s from regionals and teams in a bit
 		{"/regionals", "/{regionals:[a-zA-z]+}", genRegionalHandler, specRegionalHandler},
 	}
 
@@ -53,10 +53,7 @@ func main() {
 	defer s.Session.Close()
 	http.Handle("/", s.initHandlers())
 	log.Println("Listening...")
-	err := http.ListenAndServe(":9000", nil)
-	if err != nil {
-		log.Fatalln("ListenAndServe: ", err)
-	}
+	log.Fatalln(http.ListenAndServe(":8080", nil))
 }
 
 func serverInit() {
@@ -95,7 +92,9 @@ func (s *Server) Query(collection *mgo.Collection) {}
 func (s *Server) initHandlers() *mux.Router {
 	r := mux.NewRouter()
 	//Forces the router to recognize /path and /path/ as the same.
-	r.StrictSlash(true)
+	//Commented out because it returns a 301 Perm Redirect, and i haven't found a
+	//good way(non hackish) to handle it.
+	// r.StrictSlash(true)
 	for _, value := range s.Routes {
 		router := r.PathPrefix(value.PrefixRoute).Subrouter()
 		router.HandleFunc("/", value.PrefixHandler).Methods(RestMethods...).Name(value.PrefixRoute)
@@ -112,7 +111,7 @@ func (p NotFoundHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		p.Method = http.StatusNotFound
 		break
 	default: //Defaulted because on a true 404, mux returns an empty string.
-		http.Error(w, "Page Not Found", http.StatusNotFound)
+		http.NotFound(w, req)
 		break
 	}
 }

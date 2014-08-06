@@ -21,19 +21,6 @@ type Team struct {
 	Photos []byte `json:"photos,omitempty" bson:"photos,omitempty"`
 }
 
-//PythonTeamWrapper is necessary for the python version of the server
-type PythonTeamWrapper struct {
-	Force  *bool   `json:"force"`
-	Number *int    `json:"number"`
-	Name   *string `json:"name"`
-	//Will need to be changed to it's own struct
-	Reviews *[]string `json:"reviews"`
-	//Will need to be changed to it's own struct
-	Matches *[]int `json:"matches"`
-	//Will/Should be corrected soon
-	Photos *[]byte `json:"photos"`
-}
-
 //TeamResponse is the Current Representation of what TBA sends back.
 //Wholly unnecessary but allows me to see what I'm working with
 type TeamResponse struct {

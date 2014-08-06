@@ -118,8 +118,7 @@ func handleTeam(c *cli.Context) {
 	length := len(dataSlice)
 	//Check if there is enough params passed through before allocating mem
 	if length < 1 {
-		log.Println("There needs to be a team num included")
-		os.Exit(3)
+		log.Fatalln("There needs to be a team num included")
 	}
 	args := make([]string, length)
 	var e error
@@ -156,7 +155,7 @@ func getData(url string, resc chan string, errc chan error) {
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Add(headerName, headerValue)
 	res, err := client.Do(req)
-	log.Fatalf("%s, %v\n", "Request Does Not Seem to Have Gone Through. Try Again Later.", err)
+	logErr("Request Does Not Seem to Have Gone Through. Try Again Later.", err)
 	defer res.Body.Close()
 	var data json.RawMessage
 	//Do this instead of io.ReadAll so we don't need contiguous mem
@@ -260,28 +259,20 @@ func logErr(s string, err error) {
 	}
 }
 
-func sendTeamData(team structs.Team, resc chan string, errc chan error) {
+func sendTeamData(team structs.Team, resc chan<- string, errc chan<- error) {
 	//this is so freaking ugly
-	res, err := http.Post(serverLocation+"/teams", "application/json",
-		bytes.NewReader(tossMarshalErr(json.Marshal(pythonWrapTeam(team))))) //If it panics here it was "Unable to encode Team struct."
-
+	res, err := http.Post(serverLocation+"/teams/", "application/json",
+		bytes.NewReader(tossMarshalErr(json.Marshal(team)))) //If it panics here it was "Unable to encode Team struct."
+	// //Follow the redirect once.
+	// for res.StatusCode == http.StatusMovedPermanently {
+	// 	res, err = http.Post(res.Request.URL.String()+"/", "application/json",
+	// 		bytes.NewReader(tossMarshalErr(json.Marshal(pythonWrapTeam(team)))))
+	// }
 	if err != nil {
 		log.Println("Request didn't go through for:", team.Number, ". Please check server availability(config/location/online).")
 		errc <- err
-	}
-	if res != nil {
+	} else if res != nil {
 		resc <- res.Status
-	}
-}
-
-func pythonWrapTeam(t structs.Team) structs.PythonTeamWrapper {
-	return structs.PythonTeamWrapper{
-		Name:    &t.Name,
-		Number:  &t.Number,
-		Force:   &t.Force,
-		Reviews: &t.Reviews,
-		Matches: &t.Matches,
-		Photos:  &t.Photos,
 	}
 }
 
@@ -352,7 +343,7 @@ func returnRegionalURL(key string) string {
 }
 
 func sendRegionalData(r structs.Regional, resc chan string, errc chan error) {
-	res, err := http.Post(serverLocation+"/regionals", "application/json", bytes.NewReader(tossMarshalErr(json.Marshal(r)))) //If it panics here it was "Unable to encode Regional struct."
+	res, err := http.Post(serverLocation+"/regionals/", "application/json", bytes.NewReader(tossMarshalErr(json.Marshal(r)))) //If it panics here it was "Unable to encode Regional struct."
 
 	if err != nil {
 		log.Println("Post didn't go through for:", r.Location, ". Please check server config/location.")
