@@ -11,10 +11,6 @@ import (
 
 const (
 	mongoDefaultURI = "127.0.0.1"
-	//NotFound is the constant for a 404 page, used in the NotFoundHandler
-	NotFound = iota + 404
-	//NotSupported == 405
-	NotSupported
 )
 
 //NotFoundHandler for 404 and 405 errors depending on the switching of the Method value
@@ -36,9 +32,13 @@ var (
 	//still occurs we will put every method in the subrouter Methods call and use
 	// a switch to filter out the unnecessary/unsupported methods
 	routes = sts.Routes{
-		//The first param must have the trailing slash left off
-		{"/user", "/{name:[a-z]+}", postUserHandler, getUserHandler},
-		{"/team", "/{teamNum:[0-9]+}", postTeamHandler, getTeamHandler},
+		// we have to escape the \w because go tries to inteerpret it as a string
+		//literal. \\w means match any word character including letters, numbers,
+		//and underscores
+		{"/user", "/{name:[\\w]+}", genUserHandler, specUserHandler},
+		{"/team", "/{teamNum:[0-9]+}", genTeamHandler, specTeamHandler},
+		//TODO: Remove s from regionals in a bit
+		{"/regionals", "/{regionals:[a-zA-z]+}", genRegionalHandler, specRegionalHandler},
 	}
 
 	s = Server{}
@@ -48,23 +48,25 @@ var (
 
 func main() {
 	serverInit()
+	//Don't close session till end of main block, which doesn't occur
+	//until the server itself is killed
 	defer s.Session.Close()
 	http.Handle("/", s.initHandlers())
 	log.Println("Listening...")
 	err := http.ListenAndServe(":9000", nil)
 	if err != nil {
-		log.Fatal("ListenAndServe: ", err)
+		log.Fatalln("ListenAndServe: ", err)
 	}
 }
 
 func serverInit() {
-	s.setupDB()
+	s.initDB()
 	s.Routes = routes
 	s.NotThere = NotFoundHandler{}
 	s.dummyWrite("scoutServer", "team")
 }
 
-func (s *Server) setupDB() {
+func (s *Server) initDB() {
 	s.DBURI = mongoDefaultURI
 	var err error
 	di := &mgo.DialInfo{
@@ -80,6 +82,39 @@ func (s *Server) setupDB() {
 	//Set to nil for faster throughput but no error checking
 	s.Session.SetSafe(&mgo.Safe{})
 	s.Session.SetMode(mgo.Monotonic, true)
+}
+
+//Write writes data to the MongoDB instance
+//Consider using bulk api
+//http://blog.mongodb.org/post/84922794768/mongodbs-new-bulk-api
+func (s *Server) Write(collection *mgo.Collection, data ...interface{}) {}
+
+//Query queries data from DB
+func (s *Server) Query(collection *mgo.Collection) {}
+
+func (s *Server) initHandlers() *mux.Router {
+	r := mux.NewRouter()
+	//Forces the router to recognize /path and /path/ as the same.
+	r.StrictSlash(true)
+	for _, value := range s.Routes {
+		router := r.PathPrefix(value.PrefixRoute).Subrouter()
+		router.HandleFunc("/", value.PrefixHandler).Methods(RestMethods...).Name(value.PrefixRoute)
+		router.HandleFunc(value.PostfixRoute, value.PostfixHandler).Methods(RestMethods...).Name(value.PostfixRoute)
+	}
+	r.NotFoundHandler = s.NotThere
+	return r
+}
+
+func (p NotFoundHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	switch p.Method {
+	case http.StatusMethodNotAllowed:
+		http.Error(w, "That Method isn't allowed on this resource", http.StatusMethodNotAllowed)
+		p.Method = http.StatusNotFound
+		break
+	default: //Defaulted because on a true 404, mux returns an empty string.
+		http.Error(w, "Page Not Found", http.StatusNotFound)
+		break
+	}
 }
 
 func (s *Server) dummyWrite(dbName string, collectionName string) {
@@ -108,67 +143,6 @@ func (s *Server) dummyWrite(dbName string, collectionName string) {
 	}
 }
 
-//Write writes data to the MongoDB instance
-//Consider using bulk api
-//http://blog.mongodb.org/post/84922794768/mongodbs-new-bulk-api
-func (s *Server) Write(collection *mgo.Collection, data ...interface{}) {}
-
-func (s *Server) initHandlers() *mux.Router {
-	r := mux.NewRouter()
-	//Forces the router to recognize /path and /path/ as the same.
-	r.StrictSlash(true)
-	for _, value := range s.Routes {
-		router := r.PathPrefix(value.PrefixRoute).Subrouter()
-		router.HandleFunc("/", value.PrefixHandler).Methods(RestMethods...).Name(value.PrefixRoute)
-		router.HandleFunc(value.PostfixRoute, value.PostfixHandler).Methods(RestMethods...).Name(value.PostfixRoute)
-	}
-	r.NotFoundHandler = s.NotThere
-	return r
-}
-
-func (p NotFoundHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	switch p.Method {
-	case NotSupported:
-		w.Write([]byte("405: Method Not Supported, man"))
-		p.Method = NotFound
-		break
-	default: //Defaulted because on a true 404, mux returns an empty string.
-		w.Write([]byte("404 page not found, man"))
-		break
-	}
-}
-
-func rootHandler(w http.ResponseWriter, req *http.Request) {}
-
-func getTeamHandler(w http.ResponseWriter, req *http.Request) {
-	switch req.Method {
-	case "GET":
-		// params := mux.Vars(req)
-		// name := params["teamNum"]
-		w.Write([]byte("Hello " + s.dummyRead("scoutServer", "team")))
-		break
-
-	default:
-		s.NotThere.Method = NotSupported
-		s.NotThere.ServeHTTP(w, req)
-		break
-	}
-}
-func postTeamHandler(w http.ResponseWriter, req *http.Request) {
-	switch req.Method {
-	case "POST":
-		break
-	case "PUT":
-		break
-	case "PATCH":
-		break
-	default:
-		s.NotThere.Method = NotSupported
-		s.NotThere.ServeHTTP(w, req)
-		break
-	}
-}
-
 func (s *Server) dummyRead(dbName string, collectionName string) string {
 	session := s.Session.Copy()
 	collection := session.DB(dbName).C(collectionName)
@@ -190,35 +164,4 @@ func (s *Server) dummyRead(dbName string, collectionName string) string {
 	}
 	log.Println(result)
 	return result.Name
-}
-
-func getUserHandler(w http.ResponseWriter, req *http.Request) {
-	switch req.Method {
-	case "GET":
-		params := mux.Vars(req)
-		name := params["name"]
-		w.Write([]byte("Hello " + name))
-		break
-	default:
-		s.NotThere.Method = NotSupported
-		s.NotThere.ServeHTTP(w, req)
-		break
-
-	}
-}
-
-func postUserHandler(w http.ResponseWriter, req *http.Request) {
-	switch req.Method {
-	case "POST":
-		break
-	case "PUT":
-		break
-	case "PATCH":
-		break
-	default:
-		s.NotThere.Method = NotSupported
-		s.NotThere.ServeHTTP(w, req)
-		break
-
-	}
 }

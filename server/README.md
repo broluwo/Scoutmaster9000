@@ -16,3 +16,4 @@ Make sure your PATH includes to the `$GOPATH/bin` directory so your commands can
 $ export PATH=$PATH:$GOPATH/bin
 ```
 ##Usage
+Run with ```go run *.go```

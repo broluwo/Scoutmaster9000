@@ -1,3 +1,6 @@
+//Package scoutingUtilities is used for easily getting and sending data related
+//to an FRC competition to the Scoutmaster9000 server. Majority if not all of
+//the data is pulled from the The Blue Alliance API.
 package main
 
 //Requires at least go1.1, the higher the version the better
@@ -38,9 +41,10 @@ var (
 	year           = time.Now().Year()
 
 	globalFlags = []cli.Flag{
-		cli.StringFlag{"server, s", "http://0.0.0.0:8080", "Change location of server"},
-		cli.BoolFlag{"force, f", "Overwrite teams that already exist in the Scoutmaster 9000 database.  By default, if a team or regional already exists, it will not be changed."},
-		cli.IntFlag{"year, y", year, "Change location of server"},
+		cli.StringFlag{Name: "server, s", Value: "http://0.0.0.0:8080", Usage: "Change location of server"},
+		//Ability to force may be eschewed in so that to update a resource you must use PUT or PATCH
+		cli.BoolFlag{Name: "force, f", Usage: "Overwrite teams that already exist in the Scoutmaster 9000 database.  By default, if a team or regional already exists, it will not be changed."},
+		cli.IntFlag{Name: "year, y", Value: year, Usage: "Change year of which data is being searched for."},
 	}
 )
 
@@ -152,7 +156,7 @@ func getData(url string, resc chan string, errc chan error) {
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Add(headerName, headerValue)
 	res, err := client.Do(req)
-	logErr("Request Does Not Seem to Have Gone Through. Try Again Later.", err)
+	log.Fatalf("%s, %v\n", "Request Does Not Seem to Have Gone Through. Try Again Later.", err)
 	defer res.Body.Close()
 	var data json.RawMessage
 	//Do this instead of io.ReadAll so we don't need contiguous mem
@@ -244,7 +248,7 @@ func getMatchAndWinnerData(eventKey string) ([]structs.Match, map[string][3]int)
 //It's not really necessary but it helps readability
 func panicErr(err error) {
 	if err != nil {
-		panic(err)
+		log.Panicln(err)
 	}
 }
 
@@ -252,8 +256,7 @@ func panicErr(err error) {
 //It's not really necessary but it helps readability
 func logErr(s string, err error) {
 	if err != nil {
-		log.Println(s)
-		os.Exit(3)
+		log.Fatalf("%v,%v\n", s, err)
 	}
 }
 
