@@ -127,12 +127,21 @@ type Regional struct {
 	Year        int               `json:"year"`
 }
 
+// //Route is the struct that defines the properties we use for the routes we need
+// //handled by the new mux router
+// type Route struct {
+// 	Route   string
+// 	Handler func(http.ResponseWriter, *http.Request)
+// 	Methods []string
+// }
+
 //Route is the struct that defines the properties we use for the routes we need
 //handled by the new mux router
 type Route struct {
-	Route   string
-	Handler func(http.ResponseWriter, *http.Request)
-	Methods []string
+	PrefixRoute    string
+	PostfixRoute   string
+	PrefixHandler  func(http.ResponseWriter, *http.Request)
+	PostfixHandler func(http.ResponseWriter, *http.Request)
 }
 
 //Routes ...

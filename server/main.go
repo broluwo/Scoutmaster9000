@@ -3,8 +3,6 @@ package main
 import (
 	"log"
 	"net/http"
-	"os"
-	"time"
 
 	sts "github.com/broluwo/Scoutmaster9000/structs" // Renaming structs to sts for convenience
 	"github.com/gorilla/mux"
@@ -33,12 +31,19 @@ type Server struct {
 }
 
 var (
+	//If a method is not included in the string slice which holds the recognized
+	//methods, it will auto 404 it instead of passing in a 405 error. While this
+	//still occurs we will put every method in the subrouter Methods call and use
+	// a switch to filter out the unnecessary/unsupported methods
 	routes = sts.Routes{
-		{"/user/{name:[a-z]+}", userHandler, []string{"GET", "POST"}},
-		{"/team/{teamNum:[0-9]+}", teamHandler, []string{"GET", "POST"}},
+		//The first param must have the trailing slash left off
+		{"/user", "/{name:[a-z]+}", postUserHandler, getUserHandler},
+		{"/team", "/{teamNum:[0-9]+}", postTeamHandler, getTeamHandler},
 	}
 
 	s = Server{}
+	//RestMethods that could be used
+	RestMethods = []string{"POST", "PUT", "PATCH", "GET", "HEAD", "DELETE", "OPTIONS"}
 )
 
 func main() {
@@ -46,14 +51,16 @@ func main() {
 	defer s.Session.Close()
 	http.Handle("/", s.initHandlers())
 	log.Println("Listening...")
-	http.ListenAndServe(":9000", nil)
-
+	err := http.ListenAndServe(":9000", nil)
+	if err != nil {
+		log.Fatal("ListenAndServe: ", err)
+	}
 }
 
 func serverInit() {
 	s.setupDB()
 	s.Routes = routes
-	s.NotThere = NotFoundHandler{NotFound}
+	s.NotThere = NotFoundHandler{}
 	s.dummyWrite("scoutServer", "team")
 }
 
@@ -63,13 +70,11 @@ func (s *Server) setupDB() {
 	di := &mgo.DialInfo{
 		Addrs:    []string{s.DBURI},
 		Direct:   true,
-		Timeout:  time.Duration(30 * time.Second),
 		FailFast: true,
 	}
 	s.Session, err = mgo.DialWithInfo(di)
 	if err != nil {
-		log.Printf("Can't find Mongodb.\n Ensure that it is running and you have the correct address., %v\n", err)
-		os.Exit(3)
+		log.Fatalf("Can't find Mongodb.\n Ensure that it is running and you have the correct address., %v\n", err)
 	}
 	// Ensure that any query that changes data is processed without error
 	//Set to nil for faster throughput but no error checking
@@ -95,13 +100,11 @@ func (s *Server) dummyWrite(dbName string, collectionName string) {
 	}
 	err := collection.EnsureIndex(index)
 	if err != nil {
-		log.Printf("Can't assert index, %v\n", err)
-		os.Exit(3)
+		log.Fatalf("Can't assert index, %v\n", err)
 	}
 	err = collection.Insert(document)
 	if err != nil {
-		log.Printf("Can't insert document, %v\n", err)
-		os.Exit(3)
+		log.Fatalf("Can't insert document, %v\n", err)
 	}
 }
 
@@ -111,12 +114,16 @@ func (s *Server) dummyWrite(dbName string, collectionName string) {
 func (s *Server) Write(collection *mgo.Collection, data ...interface{}) {}
 
 func (s *Server) initHandlers() *mux.Router {
-	router := mux.NewRouter()
+	r := mux.NewRouter()
+	//Forces the router to recognize /path and /path/ as the same.
+	r.StrictSlash(true)
 	for _, value := range s.Routes {
-		router.HandleFunc(value.Route, value.Handler).Methods(value.Methods...)
+		router := r.PathPrefix(value.PrefixRoute).Subrouter()
+		router.HandleFunc("/", value.PrefixHandler).Methods(RestMethods...).Name(value.PrefixRoute)
+		router.HandleFunc(value.PostfixRoute, value.PostfixHandler).Methods(RestMethods...).Name(value.PostfixRoute)
 	}
-	router.NotFoundHandler = NotFoundHandler{}
-	return router
+	r.NotFoundHandler = s.NotThere
+	return r
 }
 
 func (p NotFoundHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -125,7 +132,7 @@ func (p NotFoundHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		w.Write([]byte("405: Method Not Supported, man"))
 		p.Method = NotFound
 		break
-	default:
+	default: //Defaulted because on a true 404, mux returns an empty string.
 		w.Write([]byte("404 page not found, man"))
 		break
 	}
@@ -133,14 +140,27 @@ func (p NotFoundHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func rootHandler(w http.ResponseWriter, req *http.Request) {}
 
-func teamHandler(w http.ResponseWriter, req *http.Request) {
+func getTeamHandler(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case "GET":
 		// params := mux.Vars(req)
 		// name := params["teamNum"]
 		w.Write([]byte("Hello " + s.dummyRead("scoutServer", "team")))
 		break
+
+	default:
+		s.NotThere.Method = NotSupported
+		s.NotThere.ServeHTTP(w, req)
+		break
+	}
+}
+func postTeamHandler(w http.ResponseWriter, req *http.Request) {
+	switch req.Method {
 	case "POST":
+		break
+	case "PUT":
+		break
+	case "PATCH":
 		break
 	default:
 		s.NotThere.Method = NotSupported
@@ -161,27 +181,39 @@ func (s *Server) dummyRead(dbName string, collectionName string) string {
 	}
 	err := collection.EnsureIndex(index)
 	if err != nil {
-		log.Printf("Can't assert index, %v\n", err)
-		os.Exit(3)
+		log.Fatalf("Can't assert index, %v\n", err)
 	}
 	result := sts.Team{}
 	err = collection.Find(nil).One(&result)
 	if err != nil {
-		log.Printf("Can't read document, %v\n", err)
-		os.Exit(3)
+		log.Fatalf("Can't read document, %v\n", err)
 	}
 	log.Println(result)
 	return result.Name
 }
 
-func userHandler(w http.ResponseWriter, req *http.Request) {
+func getUserHandler(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case "GET":
 		params := mux.Vars(req)
 		name := params["name"]
 		w.Write([]byte("Hello " + name))
 		break
+	default:
+		s.NotThere.Method = NotSupported
+		s.NotThere.ServeHTTP(w, req)
+		break
+
+	}
+}
+
+func postUserHandler(w http.ResponseWriter, req *http.Request) {
+	switch req.Method {
 	case "POST":
+		break
+	case "PUT":
+		break
+	case "PATCH":
 		break
 	default:
 		s.NotThere.Method = NotSupported
