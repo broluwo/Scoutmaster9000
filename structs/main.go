@@ -10,15 +10,15 @@ import (
 
 //Team is the struct that represents a team
 type Team struct {
-	Force  bool   `json:"force,omitempty" bson:"force,omitempty"`
-	Number int    `json:"team_number,omitempty" bson:"number,omitempty"`
-	Name   string `json:"nickname,omitempty" bson:"name,omitempty"`
+	Force  bool `json:"force,omitempty" bson:",omitempty"`
+	Number int  `json:"team_number,omitempty" bson:",omitempty"`
 	//Will need to be changed to it's own struct
-	Reviews []string `json:"reviews,omitempty" bson:"reviews,omitempty"`
+	Name    string   `json:"nickname,omitempty" bson:",omitempty"`
+	Reviews []string `json:"reviews,omitempty" bson:",omitempty"`
 	//Will need to be changed to it's own struct
-	Matches []int `json:"matches,omitempty" bson:"matches,omitempty"`
+	Matches []int `json:"matches,omitempty" bson:",omitempty"`
 	//Will/Should be corrected soon
-	Photos []byte `json:"photos,omitempty" bson:"photos,omitempty"`
+	Photos []byte `json:"photos,omitempty" bson:",omitempty"`
 }
 
 //TeamResponse is the Current Representation of what TBA sends back.
@@ -97,23 +97,26 @@ type Alliance struct {
 
 //The Match struct is how a match is represented
 type Match struct {
-	Number    int    `json:"number,omitempty" bson:"number,omitempty"`
-	Type      string `json:"type,omitempty" bson:"type,omitempty"`
-	Red       []int  `json:"red,omitempty" bson:"red,omitempty"` //These should be strings in next v
-	Blue      []int  `json:"blue,omitempty" bson:"blue,omitempty"`
-	RedScore  int    `json:"rScore,omitempty" bson:"rScore,omitempty"`
-	BlueScore int    `json:"bScore,omitempty" bson:"bScore,omitempty"`
-	Winner    string `json:"winner,omitempty" bson:"winner,omitempty"`
+	Number    int    `json:"number,omitempty" bson:",omitempty"`
+	Type      string `json:"type,omitempty" bson:",omitempty"`
+	Red       []int  `json:"red,omitempty" bson:",omitempty"` //These should be strings in next v
+	Blue      []int  `json:"blue,omitempty" bson:",omitempty"`
+	RedScore  int    `json:"rScore,omitempty" bson:",omitempty"`
+	BlueScore int    `json:"bScore,omitempty" bson:",omitempty"`
+	Winner    string `json:"winner,omitempty" bson:",omitempty"`
 }
+
+//START OMIT
 
 //Regional How the python server takes regional
 type Regional struct {
-	Location    string            `json:"location,omitempty" bson:"location,omitempty"`
-	Matches     []Match           `json:"matches,omitempty" bson:"matches,omitempty"`
-	WinnerArray map[string][3]int `json:"winnerCount,omitempty" bson:"winnerCount,omitempty"`
-	Year        int               `json:"year,omitempty" bson:"year,omitempty"`
+	Location    string            `json:"location,omitempty" bson:""` //REQUIRED
+	Matches     []Match           `json:"matches,omitempty" bson:",omitempty"`
+	WinnerArray map[string][3]int `json:"winnerCount,omitempty" bson:",omitempty"`
+	Year        int               `json:"year,omitempty" bson:""` //REQUIRED
 }
 
+//END OMIT
 //end marshalled structs
 
 //Route is the struct that defines the properties we use for the routes we need
