@@ -1,3 +1,6 @@
+//Package scoutingUtilities is used for easily getting and sending data related
+//to an FRC competition to the Scoutmaster9000 server. Majority if not all of
+//the data is pulled from the The Blue Alliance API.
 package main
 
 //Requires at least go1.1, the higher the version the better
@@ -22,6 +25,7 @@ import (
 
 //Utilities package scout-util.py contains all the functions to pull the teams and team data from the Blue Alliance
 //Any structs can be found in structs.go
+
 const (
 	teamURL     = "http://www.thebluealliance.com/api/v2/team/"
 	regionalURL = "http://www.thebluealliance.com/api/v2/event/"  //"http://www.thebluealliance.com/api/v1/event/details?event="
@@ -32,19 +36,20 @@ const (
 )
 
 //Similar to constants but are changeable by flags.
-var (
-	force          = false
-	serverLocation = "http://0.0.0.0:8080"
-	year           = time.Now().Year()
 
-	globalFlags = []cli.Flag{
-		cli.StringFlag{"server, s", "http://0.0.0.0:8080", "Change location of server"},
-		cli.BoolFlag{"force, f", "Overwrite teams that already exist in the Scoutmaster 9000 database.  By default, if a team or regional already exists, it will not be changed."},
-		cli.IntFlag{"year, y", year, "Change location of server"},
-	}
-)
+var force = false
+var serverLocation = "http://0.0.0.0:8080"
+var year = time.Now().Year()
+
+var globalFlags = []cli.Flag{
+	cli.StringFlag{Name: "server, s", Value: "http://0.0.0.0:8080", Usage: "Change location of server"},
+	//Ability to force may be eschewed in so that to update a resource you must use PUT or PATCH
+	cli.BoolFlag{Name: "force, f", Usage: "Overwrite teams that already exist in the Scoutmaster 9000 database.  By default, if a team or regional already exists, it will not be changed."},
+	cli.IntFlag{Name: "year, y", Value: year, Usage: "Change year of which data is being searched for."},
+}
 
 func main() {
+	t := time.Now()
 	app := cli.NewApp()
 	app.Name = "Scoutmaster Utilities"
 	app.Version = "0.1"
@@ -82,6 +87,7 @@ func main() {
 	if err != nil {
 		os.Exit(-1)
 	}
+	log.Println(time.Since(t))
 }
 
 //I feel as if there should be a way to loop through these, instead of hard coding. It's an easy fix either way
@@ -114,8 +120,7 @@ func handleTeam(c *cli.Context) {
 	length := len(dataSlice)
 	//Check if there is enough params passed through before allocating mem
 	if length < 1 {
-		log.Println("There needs to be a team num included")
-		os.Exit(3)
+		log.Fatalln("There needs to be a team num included")
 	}
 	args := make([]string, length)
 	var e error
@@ -147,7 +152,7 @@ func scrapeTeam(teamNums ...string) {
 	}
 }
 
-func getData(url string, resc chan string, errc chan error) {
+func getData(url string, resc chan<- string, errc chan<- error) {
 	client := &http.Client{}
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Add(headerName, headerValue)
@@ -163,7 +168,8 @@ func getData(url string, resc chan string, errc chan error) {
 		if t.Number == 0 {
 			log.Println("Provided Team Number does not exist")
 		}
-		//We don't do an else because we need the program to return an err so that scrapeTeam does not block infinitely
+		//We don't do an else because we need the program to return an err
+		//so that scrapeTeam does not block infinitely
 		sendTeamData(t, resc, errc)
 	} else if strings.Contains(url, regionalURL) {
 		ev := structs.EventResponse{}
@@ -244,7 +250,7 @@ func getMatchAndWinnerData(eventKey string) ([]structs.Match, map[string][3]int)
 //It's not really necessary but it helps readability
 func panicErr(err error) {
 	if err != nil {
-		panic(err)
+		log.Panicln(err)
 	}
 }
 
@@ -252,33 +258,24 @@ func panicErr(err error) {
 //It's not really necessary but it helps readability
 func logErr(s string, err error) {
 	if err != nil {
-		log.Println(s)
-		os.Exit(3)
+		log.Fatalf("%v,%v\n", s, err)
 	}
 }
 
-func sendTeamData(team structs.Team, resc chan string, errc chan error) {
+func sendTeamData(team structs.Team, resc chan<- string, errc chan<- error) {
 	//this is so freaking ugly
-	res, err := http.Post(serverLocation+"/teams", "application/json",
-		bytes.NewReader(tossMarshalErr(json.Marshal(pythonWrapTeam(team))))) //If it panics here it was "Unable to encode Team struct."
-
+	res, err := http.Post(serverLocation+"/team/", "application/json",
+		bytes.NewReader(tossMarshalErr(json.Marshal(team)))) //If it panics here it was "Unable to encode Team struct."
+	// //Follow the redirect
+	// for res.StatusCode == http.StatusMovedPermanently {
+	// 	res, err = http.Post(res.Request.URL.String()+"/", "application/json",
+	// 		bytes.NewReader(tossMarshalErr(json.Marshal(pythonWrapTeam(team)))))
+	// }
 	if err != nil {
 		log.Println("Request didn't go through for:", team.Number, ". Please check server availability(config/location/online).")
 		errc <- err
-	}
-	if res != nil {
+	} else if res != nil {
 		resc <- res.Status
-	}
-}
-
-func pythonWrapTeam(t structs.Team) structs.PythonTeamWrapper {
-	return structs.PythonTeamWrapper{
-		Name:    &t.Name,
-		Number:  &t.Number,
-		Force:   &t.Force,
-		Reviews: &t.Reviews,
-		Matches: &t.Matches,
-		Photos:  &t.Photos,
 	}
 }
 
@@ -348,11 +345,11 @@ func returnRegionalURL(key string) string {
 	return regionalURL + strconv.Itoa(year) + val
 }
 
-func sendRegionalData(r structs.Regional, resc chan string, errc chan error) {
-	res, err := http.Post(serverLocation+"/regionals", "application/json", bytes.NewReader(tossMarshalErr(json.Marshal(r)))) //If it panics here it was "Unable to encode Regional struct."
+func sendRegionalData(r structs.Regional, resc chan<- string, errc chan<- error) {
+	res, err := http.Post(serverLocation+"/regional/", "application/json", bytes.NewReader(tossMarshalErr(json.Marshal(r)))) //If it panics here it was "Unable to encode Regional struct."
 
 	if err != nil {
-		log.Println("Post didn't go through for:", r.Location, ". Please check server config/location.")
+		log.Println("POST didn't go through for:", r.Location, ". Please check server config/location.")
 		errc <- err
 	} else if res != nil {
 		resc <- res.Status
