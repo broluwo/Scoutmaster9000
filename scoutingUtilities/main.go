@@ -5,9 +5,11 @@ package main
 
 //Requires at least go1.1, the higher the version the better
 /********************************************************************************
- *TODO: Possibly Refactor all synchronization to use sync.Wait.                 *
- *TODO: Update README.md with instructions on how to use this.                  *
- ********************************************************************************/
+*TODO: Possibly Refactor all synchronization to use sync.Wait.                 *
+*TODO: Use the response structs to get initial data then marshal into our own  *
+       struct which would make the way we reference fields way more consistent.*
+*TODO: Update README.md with instructions on how to use this.                  *
+********************************************************************************/
 import (
 	"bytes"
 	"encoding/json"
@@ -36,17 +38,19 @@ const (
 )
 
 //Similar to constants but are changeable by flags.
+var (
+	force          = false
+	serverLocation = "http://0.0.0.0:8080"
+	year           = time.Now().Year()
 
-var force = false
-var serverLocation = "http://0.0.0.0:8080"
-var year = time.Now().Year()
-
-var globalFlags = []cli.Flag{
-	cli.StringFlag{Name: "server, s", Value: "http://0.0.0.0:8080", Usage: "Change location of server"},
-	//Ability to force may be eschewed in so that to update a resource you must use PUT or PATCH
-	cli.BoolFlag{Name: "force, f", Usage: "Overwrite teams that already exist in the Scoutmaster 9000 database.  By default, if a team or regional already exists, it will not be changed."},
-	cli.IntFlag{Name: "year, y", Value: year, Usage: "Change year of which data is being searched for."},
-}
+	globalFlags = []cli.Flag{
+		cli.StringFlag{Name: "server, s", Value: "http://0.0.0.0:8080", Usage: "Change location of server"},
+		//Ability to force may be eschewed in so that to update a resource you must use PUT or PATCH
+		cli.BoolFlag{Name: "force, f",
+			Usage: "Overwrite teams that already exist in the Scoutmaster 9000 database.  By default, if a team or regional already exists, it will not be changed."},
+		cli.IntFlag{Name: "year, y", Value: year, Usage: "Change year of which data is being searched for."},
+	}
+)
 
 func main() {
 	t := time.Now()
@@ -59,7 +63,7 @@ func main() {
 		{
 			Name:        "scrapeTeam",
 			ShortName:   "t",
-			Description: "A team to look up and add.Employs the Blue Alliance API and generates the JSON data for the input team given by the team's number. The teamNumber should be the official team number meaning it must be in the form of frc###. It will then dump everything to the Scoutmaster servers.",
+			Description: "A team (or teams) to look up and add to the DB.Employs the Blue Alliance API.",
 			Flags:       globalFlags,
 			Usage:       "scoutingUtilities t 449 ### ### ### ... Append as many teams as you like.",
 			Action:      handleTeam,
@@ -126,16 +130,16 @@ func handleTeam(c *cli.Context) {
 	var e error
 	for j, i := range dataSlice {
 		//Converts from string to int. If it errors out, there is malformed input.
-		//FIXME: Waste of a call? Could do a interface type assertion...
 		_, e = strconv.Atoi(i)
 		logErr("The provided teamNum needs to be an integer ->"+i, e)
 		args[j] = teamPrefix + i
 	}
-	//Allows for slice variadic
+	//Allows for any amount of input to a sane degree.
 	scrapeTeam(args...)
 }
 
 //scrapeTeam takes a slice of team keys and sends them off to be retrieved and posted, blocking to print the results of their conquests
+//Could switch to a sync.WaitGroup
 func scrapeTeam(teamNums ...string) {
 	length := len(teamNums)
 	resc, errc := make(chan string), make(chan error)
@@ -217,7 +221,12 @@ func getMatchAndWinnerData(eventKey string) ([]structs.Match, map[string][3]int)
 			}
 		}
 
-		m := structs.Match{Number: match.MatchNumber, Type: match.CompLevel, Red: redTeams, Blue: blueTeams, RedScore: int(match.Alliances.Red.Score), BlueScore: int(match.Alliances.Blue.Score)}
+		m := structs.Match{Number: match.MatchNumber,
+			Type:      match.CompLevel,
+			Red:       redTeams,
+			Blue:      blueTeams,
+			RedScore:  int(match.Alliances.Red.Score),
+			BlueScore: int(match.Alliances.Blue.Score)}
 		if m.RedScore > m.BlueScore {
 			m.Winner = "red"
 		} else if m.RedScore < m.BlueScore {
@@ -228,6 +237,8 @@ func getMatchAndWinnerData(eventKey string) ([]structs.Match, map[string][3]int)
 		matches = append(matches, m)
 	}
 	//Winner Code Below
+	//There should be a way cleaner way of doing this, could probably do it in the
+	//server code.
 	blue := map[string]int{"blue": 0, "red": 2, "tie": 1}
 	red := map[string]int{"red": 0, "blue": 2, "tie": 1}
 	var winnerArray = make(map[string][3]int)
@@ -317,7 +328,7 @@ func scrapeRegional(regionalNames []string) {
 
 //Accepts a slice so that changing that packetSize cascades down, with minimal work
 func returnRegionalURL(key string) string {
-	val, err := regionalKeyMap[key]
+	val, err := structs.RegionalKeyMap[key]
 	if !err {
 		//This means the key wasn't in our cached ones and we need to make a request
 		log.Println("Regional not found locally, checking online...")
@@ -346,7 +357,8 @@ func returnRegionalURL(key string) string {
 }
 
 func sendRegionalData(r structs.Regional, resc chan<- string, errc chan<- error) {
-	res, err := http.Post(serverLocation+"/regional/", "application/json", bytes.NewReader(tossMarshalErr(json.Marshal(r)))) //If it panics here it was "Unable to encode Regional struct."
+	//If it panics here it was "Unable to encode Regional struct."
+	res, err := http.Post(serverLocation+"/regional/", "application/json", bytes.NewReader(tossMarshalErr(json.Marshal(r))))
 
 	if err != nil {
 		log.Println("POST didn't go through for:", r.Location, ". Please check server config/location.")
@@ -356,95 +368,7 @@ func sendRegionalData(r structs.Regional, resc chan<- string, errc chan<- error)
 	}
 }
 func listRegional(c *cli.Context) {
-	for k := range regionalKeyMap {
+	for k := range structs.RegionalKeyMap {
 		println(k)
 	}
 }
-
-//This takes regional names and maps them to the keys TBA uses
-//Since this is hard coded it is a faster but non safe way of checking values.
-//If a new regional is ever added and isn't present or the keys change this has to be updated.
-//All names and keys were retrieved from https://docs.google.com/spreadsheet/ccc?key=0ApRO2Yzh2z01dExFZEdieV9WdTJsZ25HSWI3VUxsWGc#gid=0 .
-//An alternative way of doing this is to query "http://www.thebluealliance.com/api/v1/events/list?year=<yearGoesHere>"
-//to get a list of all keys and check each returned json array's name param to see if it matches the one provided. Slower but safe(r).
-var regionalKeyMap = map[string]string{
-	"Alamo Regional sponsored by Rackspace Hosting":                  "txsa",
-	"Autodesk Oregon Regional":                                       "orpo",
-	"BAE Systems Granite State Regional":                             "nhma",
-	"Bayou Regional":                                                 "lake",
-	"Bedford FIRST Robotics District Competition":                    "mibed",
-	"Boilermaker Regional":                                           "inwl",
-	"Boston Regional":                                                "mabo",
-	"Bridgewater-Raritan FIRST Robotics District Competition":        "njbrg",
-	"Buckeye Regional":                                               "ohcl",
-	"Central Valley Regional":                                        "cama",
-	"Central Washington Regional":                                    "wase",
-	"Chesapeake Regional":                                            "mdba",
-	"Colorado Regional":                                              "code",
-	"Connecticut Regional sponsored by UTC":                          "ctha",
-	"Crossroads Regional":                                            "inth",
-	"Dallas Regional":                                                "txda",
-	"Detroit FIRST Robotics District Competition":                    "midet",
-	"Festival de Robotique FRC a Montreal Regional":                  "qcmo",
-	"Finger Lakes Regional":                                          "nyro",
-	"Grand Blanc FIRST Robotics District Competition":                "migbl",
-	"Greater Kansas City Regional":                                   "mokc",
-	"Greater Toronto East Regional":                                  "onto",
-	"Greater Toronto West Regional":                                  "onto",
-	"Gull Lake FIRST Robotics District Competition":                  "migul",
-	"Hatboro-Horsham FIRST Robotics District Competition":            "pahat",
-	"Hawaii Regional sponsored by BAE Systems":                       "hiho",
-	"Hub City Regional":                                              "txlu",
-	"Inland Empire Regional":                                         "casb",
-	"Israel Regional":                                                "ista",
-	"Kettering University FIRST Robotics District Competition":       "miket",
-	"Lake Superior Regional":                                         "mndu",
-	"Las Vegas Regional":                                             "nvlv",
-	"Lenape Seneca FIRST Robotics District Competition":              "njlen",
-	"Livonia FIRST Robotics District Competition":                    "miliv",
-	"Lone Star Regional":                                             "txho",
-	"Los Angeles Regional":                                           "calb",
-	"Michigan FRC State Championship":                                "micmp",
-	"Mid-Atlantic Robotics FRC Region Championship":                  "mrcmp",
-	"Midwest Regional":                                               "ilch",
-	"Minnesota 10000 Lakes Regional":                                 "mnmi",
-	"Minnesota North Star Regional":                                  "mnmi2",
-	"Mount Olive FIRST Robotics District Competition":                "njfla",
-	"New York City Regional":                                         "nyny",
-	"North Carolina Regional":                                        "ncre",
-	"Northern Lights Regional":                                       "mndu2",
-	"Oklahoma Regional":                                              "okok",
-	"Orlando Regional":                                               "flor",
-	"Palmetto Regional":                                              "scmb",
-	"Peachtree Regional":                                             "gadu",
-	"Phoenix Regional":                                               "azch",
-	"Pine Tree Regional":                                             "mele",
-	"Pittsburgh Regional":                                            "papi",
-	"Queen City Regional":                                            "ohic",
-	"Razorback Regional":                                             "arfa",
-	"Sacramento Regional":                                            "casa",
-	"San Diego Regional":                                             "casd",
-	"SBPLI Long Island Regional":                                     "nyli",
-	"Seattle Regional":                                               "wase",
-	"Silicon Valley Regional":                                        "casj",
-	"Smoky Mountains Regional":                                       "tnkn",
-	"South Florida Regional":                                         "flbr",
-	"Spokane Regional":                                               "wach",
-	"Springside - Chestnut Hill FIRST Robotics District Competition": "paphi",
-	"St Joseph FIRST Robotics District Competition":                  "misjo",
-	"St. Louis Regional":                                             "mosl",
-	"TCnj FIRST Robotics District Competition":                       "njewn",
-	"Traverse City FIRST Robotics District Competition":              "mitvc",
-	"Troy FIRST Robotics District Competition":                       "mitry",
-	"Utah Regional sponsored by NASA":                                "utwv",
-	"Virginia Regional":                                              "vari",
-	"Washington DC Regional":                                         "dcwa",
-	"Waterford FIRST Robotics District Competition":                  "miwfd",
-	"Waterloo Regional":                                              "onwa",
-	"West Michigan FIRST Robotics District Competition":              "miwmi",
-	"Western Canadian FRC Regional":                                  "abca",
-	"Wisconsin Regional":                                             "wimi",
-	"WPI Regional":                                                   "mawo",
-}
-
-//Inserted Lovingly with B@$# . If this prints, there should be no errors for the map insertion.
