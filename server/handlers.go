@@ -1,14 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
 
 	sts "github.com/broluwo/Scoutmaster9000/structs"
 	"github.com/gorilla/mux"
-	"gopkg.in/mgo.v2/bson"
 )
 
 //A lot more copy pasta than I'd like, need to generalize some of these patterns
@@ -42,7 +40,8 @@ func specTeamHandler(w http.ResponseWriter, req *http.Request) {
 	// we would split on commas. send the search as go funcs, have a select
 	//waiting for responses, append to an array and serve the array
 	case "GET":
-		teamNum, err := parseTeamNum(req)
+		params := mux.Vars(req)
+		teamNum, err := parseNum(params, "teamNum")
 		if err != nil {
 			//This error should never occur as the regex condition should catch it.
 			//We may want to change that behaviour.
@@ -63,7 +62,8 @@ func specTeamHandler(w http.ResponseWriter, req *http.Request) {
 		ServeJSON(w, teams)
 		break
 	case "PUT", "PATCH":
-		teamNum, err := parseTeamNum(req)
+		params := mux.Vars(req)
+		teamNum, err := parseNum(params, "teamNum")
 		if err != nil {
 			http.Error(w, "That's not a parseable int. Can't find the team.",
 				http.StatusBadRequest)
@@ -92,45 +92,20 @@ func genTeamHandler(w http.ResponseWriter, req *http.Request) {
 		ServeJSON(w, teams)
 		break
 	case "POST":
-		decoder := json.NewDecoder(req.Body)
-		defer req.Body.Close()
 		var t sts.Team
-		err := decoder.Decode(&t)
+		err := ReadJSON(req, &t)
+		log.Println(t)
 		if err != nil {
 			//TODO: Actually handle this correctly. There's absolutely no reason to
 			//panic in almost any situation
 			panic(err)
 		}
-		// I''m here trying to implement the actual storing of team data. This error
-		// should stop me from being able to move on without addressing this.
-
 		//Check Perms here...
-		session := s.getSession()
-		collection := session.DB(s.dbName).C("team")
-		if _, err := collection.UpsertId(bson.M{"Number": t.Number}, &t); err != nil {
-			log.Printf("Can't insert/update document, %v\n", err)
+		if err = Insert("team", t); err != nil {
 			http.Error(w, http.StatusText(http.StatusInternalServerError),
 				http.StatusInternalServerError)
-			session.Close()
 			return
 		}
-		session.Close()
-		// log.Printf("%v", changeInfo)
-		// index := mgo.Index{
-		// 	Key:        []string{"year"},
-		// 	Unique:     true,
-		// 	DropDups:   true,
-		// 	Background: true,
-		// 	Sparse:     true,
-		// }
-		// err = collection.EnsureIndex(index)
-		// if err != nil {
-		// 	log.Fatalf("Can't assert index, %v\n", err)
-		// }
-		// err = collection.Insert(r)
-		// if err != nil {
-		// 	log.Fatalf("Can't insert document, %v\n", err)
-		// }
 		log.Println(t.Name)
 		http.Error(w, http.StatusText(http.StatusCreated), http.StatusCreated)
 		break
@@ -141,9 +116,8 @@ func genTeamHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func parseTeamNum(req *http.Request) (teamNum int, err error) {
-	params := mux.Vars(req)
-	teamNum, err = strconv.Atoi(params["teamNum"])
+func parseNum(params map[string]string, param string) (num int, err error) {
+	num, err = strconv.Atoi(params[param])
 	return
 }
 
@@ -164,7 +138,6 @@ func specUserHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-//This should respond to get requests as well
 func genUserHandler(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case "GET":
@@ -182,8 +155,7 @@ func specRegionalHandler(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case "GET":
 		params := mux.Vars(req)
-		year, err := strconv.Atoi(params["year"])
-
+		year, err := parseNum(params, "year")
 		if err != nil {
 			//This error should never occur as the regex condition should catch it.
 			//We may want to change that behaviour.
@@ -198,7 +170,7 @@ func specRegionalHandler(w http.ResponseWriter, req *http.Request) {
 		//if the regional var is empty, return all regionals for the year
 		break
 	case "PUT", "PATCH":
-		//This update will probably be about a match, might be helpful
+		//This update will probably be about a match, might be helpful know
 		break
 	default:
 		s.NotThere.Method = http.StatusMethodNotAllowed
@@ -225,46 +197,20 @@ func genRegionalHandler(w http.ResponseWriter, req *http.Request) {
 
 	case "POST":
 		var r sts.Regional
-		decoder := json.NewDecoder(req.Body)
-		defer req.Body.Close()
-		// var t sts.Team
-		err := decoder.Decode(&r)
+		err := ReadJSON(req, &r)
 		if err != nil {
+			//TODO: Actually handle
 			panic(err)
 		}
-		//	ReadJSON(req, r)
-
 		//Check Perms here...
-		session := s.getSession()
-		collection := session.DB(s.dbName).C("regional")
-		if _, err := collection.UpsertId(bson.M{"Location": r.Location, "Year": r.Year}, &r); err != nil {
-			log.Printf("Can't insert/update document, %v\n", err)
+		if err = Insert("regional", r); err != nil {
 			http.Error(w, http.StatusText(http.StatusInternalServerError),
 				http.StatusInternalServerError)
-			session.Close()
 			return
 		}
-		session.Close()
-		// log.Printf("%v", changeInfo)
-		// index := mgo.Index{
-		// 	Key:        []string{"year"},
-		// 	Unique:     true,
-		// 	DropDups:   true,
-		// 	Background: true,
-		// 	Sparse:     true,
-		// }
-		// err = collection.EnsureIndex(index)
-		// if err != nil {
-		// 	log.Fatalf("Can't assert index, %v\n", err)
-		// }
-		// err = collection.Insert(r)
-		// if err != nil {
-		// 	log.Fatalf("Can't insert document, %v\n", err)
-		// }
+		log.Println(r.Location)
 		http.Error(w, http.StatusText(http.StatusCreated), http.StatusCreated)
-
 		break
-
 	default: //TODO:Don't need to use custom 404 handler. can just serve a 405 error from here
 		s.NotThere.Method = http.StatusMethodNotAllowed
 		s.NotThere.ServeHTTP(w, req)

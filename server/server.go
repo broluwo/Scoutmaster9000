@@ -42,16 +42,47 @@ var (
 		// we have to escape the \w because go tries to interperet it as a string
 		//literal. \w means match any word character including letters, numbers,
 		//and underscores
-		{"/user", "/{name:[\\w]+}", genUserHandler, specUserHandler},
-		{"/team", "/{teamNum:[0-9]+}", genTeamHandler, specTeamHandler},
-		//TODO:Add a route for just the year
-		{"/regional", "/{year:[0-9]+}/{regionalName:[a-zA-z]+}", genRegionalHandler, specRegionalHandler},
+		{
+			PrefixRoute: "/user",
+			PostfixRoute: []string{
+				"/{name:[\\w]+}",
+			},
+			PrefixHandler: genUserHandler,
+			PostfixHandler: []func(http.ResponseWriter, *http.Request){
+				specUserHandler,
+			},
+		},
+		{
+			PrefixRoute: "/team",
+			PostfixRoute: []string{
+				"/{teamNum:[0-9]+}",
+			},
+			PrefixHandler: genTeamHandler,
+			PostfixHandler: []func(http.ResponseWriter, *http.Request){
+				specTeamHandler,
+			},
+		},
+		{
+			PrefixRoute: "/regional",
+			PostfixRoute: []string{
+				"/{year:[0-9]+}/{regionalName:[a-zA-z]+}",
+				"/{year:[0-9]+}/",
+			},
+			PrefixHandler: genRegionalHandler,
+			PostfixHandler: []func(http.ResponseWriter, *http.Request){
+				specRegionalHandler,
+				//Create custom function for year handling? Or nah.
+				specRegionalHandler,
+			},
+		},
 	}
 
 	s = Server{}
 
 	//RestMethods that could be used
-	RestMethods = []string{"POST", "PUT", "PATCH", "GET", "HEAD", "DELETE", "OPTIONS"}
+	RestMethods     = []string{"POST", "PUT", "PATCH", "GET", "HEAD", "DELETE", "OPTIONS"}
+	CollectionNames = []string{"team", "regional", "user"}
+	Indices         = sts.Indices{sts.TeamIndex, sts.RegionalIndex}
 )
 
 func main() {
@@ -78,6 +109,14 @@ func (s *Server) initDB() {
 	//Set to nil for faster throughput but no error checking
 	s.Session.SetSafe(&mgo.Safe{})
 	s.Session.SetMode(mgo.Monotonic, true)
+	cNames, errors := EnsureIndex(CollectionNames, Indices...)
+	for k, err := range errors {
+		if err != nil {
+			log.Printf("Can't assert index for %v;%v\n", cNames[k], err)
+			//Then we could disable writes to it or something. Or just exit. Though exiting
+			//seems a bit extreme
+		}
+	}
 }
 
 //Write writes data to the MongoDB instance
@@ -86,8 +125,19 @@ func (s *Server) initDB() {
 func (s *Server) Write(collection *mgo.Collection, data ...interface{}) {}
 
 //Query queries data from DB
-func (s *Server) Query(collection *mgo.Collection) {}
-
+func EnsureIndex(collectionNames []string, indices ...mgo.Index) (s []string, e []error) {
+	for k, i := range indices {
+		fn := func(c *mgo.Collection) error {
+			return c.EnsureIndex(i)
+		}
+		err := withCollection(collectionNames[k], fn)
+		if err != nil {
+			s = append(s, collectionNames[k])
+			e = append(e, err)
+		}
+	}
+	return
+}
 func (s *Server) initHandlers() *mux.Router {
 	r := mux.NewRouter()
 	//Forces the router to recognize /path and /path/ as the same.
@@ -97,7 +147,10 @@ func (s *Server) initHandlers() *mux.Router {
 	for _, value := range s.Routes {
 		router := r.PathPrefix(value.PrefixRoute).Subrouter()
 		router.HandleFunc("/", value.PrefixHandler).Methods(RestMethods...).Name(value.PrefixRoute)
-		router.HandleFunc(value.PostfixRoute, value.PostfixHandler).Methods(RestMethods...).Name(value.PostfixRoute)
+		for k, i := range value.PostfixHandler {
+			router.HandleFunc(value.PostfixRoute[k], i).Methods(RestMethods...).Name(value.PostfixRoute[k])
+		}
+
 	}
 	r.NotFoundHandler = s.NotThere
 	return r
@@ -130,14 +183,13 @@ func ServeJSON(w http.ResponseWriter, v interface{}) {
 	}
 }
 
-// ReadJSON decodes JSON data into a provided struct
-//Could do it the json decoder way if i defined a unmarshaller for each type
-//Use this then do a tyoe assertion
+// ReadJSON decodes JSON data into a provided struct which must be passed in as a pointer.
+//If it's not a pointer you are basically putting your data into a bottomless gorge and willing it to
+//show up right next to you. Just no.
 func ReadJSON(req *http.Request, v interface{}) error {
-	//	var k json.RawMessage
 	defer req.Body.Close()
 	decoder := json.NewDecoder(req.Body)
-	err := decoder.Decode(&v)
+	err := decoder.Decode(v)
 	return err
 }
 
@@ -176,6 +228,18 @@ func withCollection(collection string, fn func(*mgo.Collection) error) error {
 	return fn(c)
 }
 
+//Insert x amount of data into a collection
+func Insert(collectionName string, values ...interface{}) error {
+	fn := func(c *mgo.Collection) error {
+		err := c.Insert(values...)
+		if err != nil {
+			log.Printf("Can't insert/update document, %v\n", err)
+		}
+		return err
+	}
+	return withCollection(collectionName, fn)
+}
+
 //SearchTeam is a generic form for searching for a Team
 //Set skip to zero is you want all the results,
 //Set limit to < 0  if you want all the results
@@ -200,6 +264,7 @@ func SearchTeam(q interface{}, skip int, limit int) (searchResults []sts.Team, e
 //SearchTeam(bson.M{"Number": teamNum, skip, limit})
 func SearchByTeamNum(teamNum int, skip int, limit int) (searchResults []sts.Team, err error) {
 	searchResults, err = SearchTeam(bson.M{"Number": teamNum}, skip, limit)
+	return
 }
 
 //SearchRegional is a generic form for searching for a Regional

@@ -6,6 +6,8 @@ package structs
 import (
 	"encoding/json"
 	"net/http"
+
+	"gopkg.in/mgo.v2"
 )
 
 type (
@@ -107,8 +109,6 @@ type (
 		Winner    string `json:"winner,omitempty" bson:",omitempty"`
 	}
 
-	//START OMIT
-
 	//Regional How the python server takes regional
 	Regional struct {
 		Location    string            `json:"location,omitempty" bson:""` //REQUIRED
@@ -116,8 +116,6 @@ type (
 		WinnerArray map[string][3]int `json:"winnerCount,omitempty" bson:",omitempty"`
 		Year        int               `json:"year,omitempty" bson:""` //REQUIRED
 	}
-
-	//END OMIT
 	//end marshalled structs
 
 	//Route is the struct that defines the properties we use for the routes we need
@@ -125,99 +123,123 @@ type (
 	//The first param of Route must have the trailing slash left off
 	Route struct {
 		PrefixRoute    string
-		PostfixRoute   string
+		PostfixRoute   []string
 		PrefixHandler  func(http.ResponseWriter, *http.Request)
-		PostfixHandler func(http.ResponseWriter, *http.Request)
+		PostfixHandler []func(http.ResponseWriter, *http.Request)
 	}
 
 	//Routes ...
 	Routes []Route
+
+	//Indices ...
+	Indices []mgo.Index
 )
 
-//This takes regional names and maps them to the keys TBA uses
-//Since this is hard coded it is a faster but non safe way of checking values.
-//If a new regional is ever added and isn't present or the keys change this has to be updated.
-//All names and keys were retrieved from https://docs.google.com/spreadsheet/ccc?key=0ApRO2Yzh2z01dExFZEdieV9WdTJsZ25HSWI3VUxsWGc#gid=0 .
-//An alternative way of doing this is to query "http://www.thebluealliance.com/api/v1/events/list?year=<yearGoesHere>"
-//to get a list of all keys and check each returned json array's name param to see if it matches the one provided. Slower but safe(r).
-var RegionalKeyMap = map[string]string{
-	"Alamo Regional sponsored by Rackspace Hosting":                  "txsa",
-	"Autodesk Oregon Regional":                                       "orpo",
-	"BAE Systems Granite State Regional":                             "nhma",
-	"Bayou Regional":                                                 "lake",
-	"Bedford FIRST Robotics District Competition":                    "mibed",
-	"Boilermaker Regional":                                           "inwl",
-	"Boston Regional":                                                "mabo",
-	"Bridgewater-Raritan FIRST Robotics District Competition":        "njbrg",
-	"Buckeye Regional":                                               "ohcl",
-	"Central Valley Regional":                                        "cama",
-	"Central Washington Regional":                                    "wase",
-	"Chesapeake Regional":                                            "mdba",
-	"Colorado Regional":                                              "code",
-	"Connecticut Regional sponsored by UTC":                          "ctha",
-	"Crossroads Regional":                                            "inth",
-	"Dallas Regional":                                                "txda",
-	"Detroit FIRST Robotics District Competition":                    "midet",
-	"Festival de Robotique FRC a Montreal Regional":                  "qcmo",
-	"Finger Lakes Regional":                                          "nyro",
-	"Grand Blanc FIRST Robotics District Competition":                "migbl",
-	"Greater Kansas City Regional":                                   "mokc",
-	"Greater Toronto East Regional":                                  "onto",
-	"Greater Toronto West Regional":                                  "onto",
-	"Gull Lake FIRST Robotics District Competition":                  "migul",
-	"Hatboro-Horsham FIRST Robotics District Competition":            "pahat",
-	"Hawaii Regional sponsored by BAE Systems":                       "hiho",
-	"Hub City Regional":                                              "txlu",
-	"Inland Empire Regional":                                         "casb",
-	"Israel Regional":                                                "ista",
-	"Kettering University FIRST Robotics District Competition":       "miket",
-	"Lake Superior Regional":                                         "mndu",
-	"Las Vegas Regional":                                             "nvlv",
-	"Lenape Seneca FIRST Robotics District Competition":              "njlen",
-	"Livonia FIRST Robotics District Competition":                    "miliv",
-	"Lone Star Regional":                                             "txho",
-	"Los Angeles Regional":                                           "calb",
-	"Michigan FRC State Championship":                                "micmp",
-	"Mid-Atlantic Robotics FRC Region Championship":                  "mrcmp",
-	"Midwest Regional":                                               "ilch",
-	"Minnesota 10000 Lakes Regional":                                 "mnmi",
-	"Minnesota North Star Regional":                                  "mnmi2",
-	"Mount Olive FIRST Robotics District Competition":                "njfla",
-	"New York City Regional":                                         "nyny",
-	"North Carolina Regional":                                        "ncre",
-	"Northern Lights Regional":                                       "mndu2",
-	"Oklahoma Regional":                                              "okok",
-	"Orlando Regional":                                               "flor",
-	"Palmetto Regional":                                              "scmb",
-	"Peachtree Regional":                                             "gadu",
-	"Phoenix Regional":                                               "azch",
-	"Pine Tree Regional":                                             "mele",
-	"Pittsburgh Regional":                                            "papi",
-	"Queen City Regional":                                            "ohic",
-	"Razorback Regional":                                             "arfa",
-	"Sacramento Regional":                                            "casa",
-	"San Diego Regional":                                             "casd",
-	"SBPLI Long Island Regional":                                     "nyli",
-	"Seattle Regional":                                               "wase",
-	"Silicon Valley Regional":                                        "casj",
-	"Smoky Mountains Regional":                                       "tnkn",
-	"South Florida Regional":                                         "flbr",
-	"Spokane Regional":                                               "wach",
-	"Springside - Chestnut Hill FIRST Robotics District Competition": "paphi",
-	"St Joseph FIRST Robotics District Competition":                  "misjo",
-	"St. Louis Regional":                                             "mosl",
-	"TCnj FIRST Robotics District Competition":                       "njewn",
-	"Traverse City FIRST Robotics District Competition":              "mitvc",
-	"Troy FIRST Robotics District Competition":                       "mitry",
-	"Utah Regional sponsored by NASA":                                "utwv",
-	"Virginia Regional":                                              "vari",
-	"Washington DC Regional":                                         "dcwa",
-	"Waterford FIRST Robotics District Competition":                  "miwfd",
-	"Waterloo Regional":                                              "onwa",
-	"West Michigan FIRST Robotics District Competition":              "miwmi",
-	"Western Canadian FRC Regional":                                  "abca",
-	"Wisconsin Regional":                                             "wimi",
-	"WPI Regional":                                                   "mawo",
-}
+var (
+	//TeamIndex is the index that defines the rules for the team collection
+	TeamIndex = mgo.Index{
+		Key:        []string{"Number"},
+		Unique:     true,
+		DropDups:   true,
+		Background: true,
+		Sparse:     true,
+		Name:       "TeamIndex",
+	}
+	//RegionalIndex is the index that defines rules for the regional collection
+	RegionalIndex = mgo.Index{
+		Key:        []string{"Year", "Location"},
+		Unique:     true, // Can't insert something with an already existing key
+		DropDups:   true, // No duplicates allowed. Older preferred
+		Background: true, //Build the index in the background
+		Sparse:     true, // Enforces that the regional being stored has both year and location
+		Name:       "TeamIndex",
+	}
+
+	//RegionalKeyMap takes regional names and maps them to the keys TBA uses.
+	//Since this is hard coded it is a faster but non safe way of checking values.
+	//If a new regional is ever added and isn't present or the keys change this has to be updated.
+	//All names and keys were retrieved from https://docs.google.com/spreadsheet/ccc?key=0ApRO2Yzh2z01dExFZEdieV9WdTJsZ25HSWI3VUxsWGc#gid=0 .
+	//An alternative way of doing this is to query "http://www.thebluealliance.com/api/v1/events/list?year=<yearGoesHere>"
+	//to get a list of all keys and check each returned json array's name param to see if it matches the one provided. Slower but safe(r).
+	RegionalKeyMap = map[string]string{
+		"Alamo Regional sponsored by Rackspace Hosting":                  "txsa",
+		"Autodesk Oregon Regional":                                       "orpo",
+		"BAE Systems Granite State Regional":                             "nhma",
+		"Bayou Regional":                                                 "lake",
+		"Bedford FIRST Robotics District Competition":                    "mibed",
+		"Boilermaker Regional":                                           "inwl",
+		"Boston Regional":                                                "mabo",
+		"Bridgewater-Raritan FIRST Robotics District Competition":        "njbrg",
+		"Buckeye Regional":                                               "ohcl",
+		"Central Valley Regional":                                        "cama",
+		"Central Washington Regional":                                    "wase",
+		"Chesapeake Regional":                                            "mdba",
+		"Colorado Regional":                                              "code",
+		"Connecticut Regional sponsored by UTC":                          "ctha",
+		"Crossroads Regional":                                            "inth",
+		"Dallas Regional":                                                "txda",
+		"Detroit FIRST Robotics District Competition":                    "midet",
+		"Festival de Robotique FRC a Montreal Regional":                  "qcmo",
+		"Finger Lakes Regional":                                          "nyro",
+		"Grand Blanc FIRST Robotics District Competition":                "migbl",
+		"Greater Kansas City Regional":                                   "mokc",
+		"Greater Toronto East Regional":                                  "onto",
+		"Greater Toronto West Regional":                                  "onto",
+		"Gull Lake FIRST Robotics District Competition":                  "migul",
+		"Hatboro-Horsham FIRST Robotics District Competition":            "pahat",
+		"Hawaii Regional sponsored by BAE Systems":                       "hiho",
+		"Hub City Regional":                                              "txlu",
+		"Inland Empire Regional":                                         "casb",
+		"Israel Regional":                                                "ista",
+		"Kettering University FIRST Robotics District Competition":       "miket",
+		"Lake Superior Regional":                                         "mndu",
+		"Las Vegas Regional":                                             "nvlv",
+		"Lenape Seneca FIRST Robotics District Competition":              "njlen",
+		"Livonia FIRST Robotics District Competition":                    "miliv",
+		"Lone Star Regional":                                             "txho",
+		"Los Angeles Regional":                                           "calb",
+		"Michigan FRC State Championship":                                "micmp",
+		"Mid-Atlantic Robotics FRC Region Championship":                  "mrcmp",
+		"Midwest Regional":                                               "ilch",
+		"Minnesota 10000 Lakes Regional":                                 "mnmi",
+		"Minnesota North Star Regional":                                  "mnmi2",
+		"Mount Olive FIRST Robotics District Competition":                "njfla",
+		"New York City Regional":                                         "nyny",
+		"North Carolina Regional":                                        "ncre",
+		"Northern Lights Regional":                                       "mndu2",
+		"Oklahoma Regional":                                              "okok",
+		"Orlando Regional":                                               "flor",
+		"Palmetto Regional":                                              "scmb",
+		"Peachtree Regional":                                             "gadu",
+		"Phoenix Regional":                                               "azch",
+		"Pine Tree Regional":                                             "mele",
+		"Pittsburgh Regional":                                            "papi",
+		"Queen City Regional":                                            "ohic",
+		"Razorback Regional":                                             "arfa",
+		"Sacramento Regional":                                            "casa",
+		"San Diego Regional":                                             "casd",
+		"SBPLI Long Island Regional":                                     "nyli",
+		"Seattle Regional":                                               "wase",
+		"Silicon Valley Regional":                                        "casj",
+		"Smoky Mountains Regional":                                       "tnkn",
+		"South Florida Regional":                                         "flbr",
+		"Spokane Regional":                                               "wach",
+		"Springside - Chestnut Hill FIRST Robotics District Competition": "paphi",
+		"St Joseph FIRST Robotics District Competition":                  "misjo",
+		"St. Louis Regional":                                             "mosl",
+		"TCnj FIRST Robotics District Competition":                       "njewn",
+		"Traverse City FIRST Robotics District Competition":              "mitvc",
+		"Troy FIRST Robotics District Competition":                       "mitry",
+		"Utah Regional sponsored by NASA":                                "utwv",
+		"Virginia Regional":                                              "vari",
+		"Washington DC Regional":                                         "dcwa",
+		"Waterford FIRST Robotics District Competition":                  "miwfd",
+		"Waterloo Regional":                                              "onwa",
+		"West Michigan FIRST Robotics District Competition":              "miwmi",
+		"Western Canadian FRC Regional":                                  "abca",
+		"Wisconsin Regional":                                             "wimi",
+		"WPI Regional":                                                   "mawo",
+	}
+)
 
 //end struct files
