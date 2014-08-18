@@ -13,6 +13,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"net/url"
@@ -170,11 +171,10 @@ func getData(url string, resc chan<- string, errc chan<- error) {
 		t := structs.Team{Force: force}
 		logErr("Ensure Team struct still matches up with data.", json.Unmarshal(data, &t))
 		if t.Number == 0 {
-			log.Println("Provided Team Number does not exist")
+			errc <- errors.New("Provided Team Number does not exist")
+		} else {
+			sendTeamData(t, resc, errc)
 		}
-		//We don't do an else because we need the program to return an err
-		//so that scrapeTeam does not block infinitely
-		sendTeamData(t, resc, errc)
 	} else if strings.Contains(url, regionalURL) {
 		ev := structs.EventResponse{}
 		logErr("Ensure EventResponse struct still matches up with TBA API.", json.Unmarshal(data, &ev))
@@ -277,11 +277,6 @@ func sendTeamData(team structs.Team, resc chan<- string, errc chan<- error) {
 	//this is so freaking ugly
 	res, err := http.Post(serverLocation+"/team/", "application/json",
 		bytes.NewReader(tossMarshalErr(json.Marshal(team)))) //If it panics here it was "Unable to encode Team struct."
-	// //Follow the redirect
-	// for res.StatusCode == http.StatusMovedPermanently {
-	// 	res, err = http.Post(res.Request.URL.String()+"/", "application/json",
-	// 		bytes.NewReader(tossMarshalErr(json.Marshal(pythonWrapTeam(team)))))
-	// }
 	if err != nil {
 		log.Println("Request didn't go through for:", team.Number, ". Please check server availability(config/location/online).")
 		errc <- err
