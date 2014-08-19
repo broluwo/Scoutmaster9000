@@ -111,10 +111,11 @@ type (
 
 	//Regional How the python server takes regional
 	Regional struct {
-		Location    string            `json:"location,omitempty" bson:""` //REQUIRED
-		Matches     []Match           `json:"matches,omitempty" bson:",omitempty"`
-		WinnerArray map[string][3]int `json:"winnerCount,omitempty" bson:",omitempty"`
-		Year        int               `json:"year,omitempty" bson:""` //REQUIRED
+		EventCode   string            `json:"" bson:""` // REQUIRED
+		Location    string            `json:"" bson:""` //REQUIRED
+		Matches     []Match           `json:",omitempty" bson:",omitempty"`
+		WinnerArray map[string][3]int `json:",omitempty" bson:",omitempty"`
+		Year        int               `json:"" bson:""` //REQUIRED
 	}
 	//end marshalled structs
 
@@ -147,12 +148,12 @@ var (
 	}
 	//RegionalIndex is the index that defines rules for the regional collection
 	RegionalIndex = mgo.Index{
-		Key:        []string{"Year", "Location"},
+		Key:        []string{"Year", "EventCode"},
 		Unique:     true, // Can't insert something with an already existing key
 		DropDups:   true, // No duplicates allowed. Older preferred
 		Background: true, //Build the index in the background
 		Sparse:     true, // Enforces that the regional being stored has both year and location
-		Name:       "TeamIndex",
+		Name:       "RegionalIndex",
 	}
 
 	//RegionalKeyMap takes regional names and maps them to the keys TBA uses.

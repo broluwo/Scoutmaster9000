@@ -178,7 +178,11 @@ func getData(url string, resc chan<- string, errc chan<- error) {
 	} else if strings.Contains(url, regionalURL) {
 		ev := structs.EventResponse{}
 		logErr("Ensure EventResponse struct still matches up with TBA API.", json.Unmarshal(data, &ev))
-		r := structs.Regional{Location: ev.Name, Year: ev.Year}
+		r := structs.Regional{
+			EventCode: ev.EventCode,
+			Location:  ev.Name,
+			Year:      ev.Year,
+		}
 		r.Matches, r.WinnerArray = getMatchAndWinnerData(ev.Key)
 		go sendRegionalData(r, resc, errc)
 		teamsToScrape := make([]string, 0, len(r.WinnerArray))

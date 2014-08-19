@@ -163,11 +163,18 @@ func specRegionalHandler(w http.ResponseWriter, req *http.Request) {
 				http.StatusBadRequest)
 			return
 		}
-
-		regional := params["regionalName"]
-		log.Println(regional)
-		log.Println(year)
-		//if the regional var is empty, return all regionals for the year
+		evC := params["eventCode"]
+		//if the eventCode var is empty, return all regionals for the year
+		results, errs := SearchRegionalByYearAndEvCode(evC, year, 0, -1)
+		if errs != nil {
+			//Do something or other
+			log.Printf("Couldn't fetch documents, %v\n", errs)
+			http.Error(w, http.StatusText(http.StatusInternalServerError),
+				http.StatusInternalServerError)
+			return
+		}
+		ServeJSON(w, results)
+		log.Println(results)
 		break
 	case "PUT", "PATCH":
 		//This update will probably be about a match, might be helpful know
@@ -182,7 +189,6 @@ func specRegionalHandler(w http.ResponseWriter, req *http.Request) {
 
 func genRegionalHandler(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
-
 	case "GET": //Returns all stored regionals
 		regionals, err := SearchRegional(nil, 0, -1)
 		if err != nil {
@@ -208,7 +214,7 @@ func genRegionalHandler(w http.ResponseWriter, req *http.Request) {
 				http.StatusInternalServerError)
 			return
 		}
-		log.Println(r.Location)
+		log.Println(r.EventCode)
 		http.Error(w, http.StatusText(http.StatusCreated), http.StatusCreated)
 		break
 	default: //TODO:Don't need to use custom 404 handler. can just serve a 405 error from here

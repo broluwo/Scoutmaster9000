@@ -13,6 +13,9 @@ import (
 	"gopkg.in/mgo.v2/bson"
 )
 
+// For all search functions the lowercased field name is used as the key for each exported field, but
+//this behavior may be changed using the respective field tag according to the official doc.
+
 //We could store all the essential variables in the path variable
 const (
 	mongoDefaultURI = "127.0.0.1"
@@ -65,7 +68,7 @@ var (
 		{
 			PrefixRoute: "/regional",
 			PostfixRoute: []string{
-				"/{year:[0-9]+}/{regionalName:[a-zA-z]+}",
+				"/{year:[0-9]+}/{eventCode:[a-zA-z]+}",
 				"/{year:[0-9]+}/",
 			},
 			PrefixHandler: genRegionalHandler,
@@ -119,12 +122,7 @@ func (s *Server) initDB() {
 	}
 }
 
-//Write writes data to the MongoDB instance
-//Consider using bulk api
-//http://blog.mongodb.org/post/84922794768/mongodbs-new-bulk-api
-func (s *Server) Write(collection *mgo.Collection, data ...interface{}) {}
-
-//Query queries data from DB
+//EnsureIndex makes sure our rules about a colelction are enforced.
 func EnsureIndex(collectionNames []string, indices ...mgo.Index) (s []string, e []error) {
 	for k, i := range indices {
 		fn := func(c *mgo.Collection) error {
@@ -178,7 +176,7 @@ func ServeJSON(w http.ResponseWriter, v interface{}) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	} else {
 		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Write(data)
 	}
 }
@@ -260,8 +258,7 @@ func SearchTeam(q interface{}, skip int, limit int) (searchResults []sts.Team, e
 	return
 }
 
-//SearchByTeamNum is a wrapper for
-//SearchTeam(bson.M{"Number": teamNum, skip, limit})
+//SearchByTeamNum is a wrapper for SearchTeam(bson.M{"Number": teamNum, skip, limit})
 func SearchByTeamNum(teamNum int, skip int, limit int) (searchResults []sts.Team, err error) {
 	searchResults, err = SearchTeam(bson.M{"Number": teamNum}, skip, limit)
 	return
@@ -279,10 +276,20 @@ func SearchRegional(q interface{}, skip int, limit int) (searchResults []sts.Reg
 		}
 		return fn
 	}
-
 	search := func() error {
 		return withCollection("regional", query)
 	}
 	err = search()
+	return
+}
+
+//SearchRegionalByYearAndEvCode is a wrapper for
+//SearchRegional(bson.M{"year": year, "eventcode": evC}, skip, limit)
+func SearchRegionalByYearAndEvCode(evC string, year int, skip int, limit int) (searchResults []sts.Regional, err error) {
+	if len(evC) <= 0 {
+		searchResults, err = SearchRegional(bson.M{"year": year}, skip, limit)
+		return
+	}
+	searchResults, err = SearchRegional(bson.M{"year": year, "eventcode": evC}, skip, limit)
 	return
 }
