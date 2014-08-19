@@ -260,7 +260,7 @@ func SearchTeam(q interface{}, skip int, limit int) (searchResults []sts.Team, e
 
 //SearchByTeamNum is a wrapper for SearchTeam(bson.M{"Number": teamNum, skip, limit})
 func SearchByTeamNum(teamNum int, skip int, limit int) (searchResults []sts.Team, err error) {
-	searchResults, err = SearchTeam(bson.M{"Number": teamNum}, skip, limit)
+	searchResults, err = SearchTeam(bson.M{"number": teamNum}, skip, limit)
 	return
 }
 
