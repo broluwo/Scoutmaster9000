@@ -22,18 +22,12 @@ const (
 	dbName          = "scoutServer"
 )
 
-//NotFoundHandler for 404 and 405 errors depending on the switching of the Method value
-type NotFoundHandler struct {
-	Method int
-}
-
 //Server ...
 type Server struct {
-	Session  *mgo.Session
-	DBURI    string
-	Routes   sts.Routes
-	NotThere NotFoundHandler
-	dbName   string
+	Session *mgo.Session
+	DBURI   string
+	Routes  sts.Routes
+	dbName  string
 }
 
 //If a method is not included in the string slice which holds the recognized
@@ -101,7 +95,6 @@ func main() {
 func initServer() {
 	s.initDB()
 	s.Routes = routes
-	s.NotThere = NotFoundHandler{}
 }
 
 func (s *Server) initDB() {
@@ -148,22 +141,8 @@ func (s *Server) initHandlers() *mux.Router {
 		for k, i := range value.PostfixHandler {
 			router.HandleFunc(value.PostfixRoute[k], i).Methods(RestMethods...).Name(value.PostfixRoute[k])
 		}
-
 	}
-	r.NotFoundHandler = s.NotThere
 	return r
-}
-
-func (p NotFoundHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	switch p.Method {
-	case http.StatusMethodNotAllowed:
-		http.Error(w, "That Method isn't allowed on this resource", http.StatusMethodNotAllowed)
-		p.Method = http.StatusNotFound
-		break
-	default: //Defaulted because on a true 404, mux returns an empty string.
-		http.NotFound(w, req)
-		break
-	}
 }
 
 // ServeJSON replies to the request with a JSON

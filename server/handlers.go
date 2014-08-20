@@ -25,6 +25,7 @@ Upon using an UPDATE method there are a series of steps that need to occur:
 		 what was already there.
 	3. Return the appropriate Response Code
 */
+
 //TODO:What should this do? Perhaps announce that the api server is actually on
 //this port? Perhaps return a StatusNoContent(204) or a StatusFound(300)?
 //TODO: 405 errors need to write the ALLOW header
@@ -73,8 +74,7 @@ func specTeamHandler(w http.ResponseWriter, req *http.Request) {
 		break
 
 	default:
-		s.NotThere.Method = http.StatusMethodNotAllowed
-		s.NotThere.ServeHTTP(w, req)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		break
 	}
 }
@@ -110,8 +110,7 @@ func genTeamHandler(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, http.StatusText(http.StatusCreated), http.StatusCreated)
 		break
 	default:
-		s.NotThere.Method = http.StatusMethodNotAllowed
-		s.NotThere.ServeHTTP(w, req)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		break
 	}
 }
@@ -131,8 +130,7 @@ func specUserHandler(w http.ResponseWriter, req *http.Request) {
 	case "PUT", "PATCH":
 		break
 	default:
-		s.NotThere.Method = http.StatusMethodNotAllowed
-		s.NotThere.ServeHTTP(w, req)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		break
 
 	}
@@ -145,8 +143,7 @@ func genUserHandler(w http.ResponseWriter, req *http.Request) {
 	case "POST":
 		break
 	default:
-		s.NotThere.Method = http.StatusMethodNotAllowed
-		s.NotThere.ServeHTTP(w, req)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		break
 
 	}
@@ -180,8 +177,7 @@ func specRegionalHandler(w http.ResponseWriter, req *http.Request) {
 		//This update will probably be about a match, might be helpful know
 		break
 	default:
-		s.NotThere.Method = http.StatusMethodNotAllowed
-		s.NotThere.ServeHTTP(w, req)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		break
 
 	}
@@ -217,9 +213,8 @@ func genRegionalHandler(w http.ResponseWriter, req *http.Request) {
 		log.Println(r.EventCode)
 		http.Error(w, http.StatusText(http.StatusCreated), http.StatusCreated)
 		break
-	default: //TODO:Don't need to use custom 404 handler. can just serve a 405 error from here
-		s.NotThere.Method = http.StatusMethodNotAllowed
-		s.NotThere.ServeHTTP(w, req)
+	default:
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		break
 
 	}
