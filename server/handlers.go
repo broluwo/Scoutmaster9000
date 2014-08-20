@@ -26,9 +26,13 @@ Upon using an UPDATE method there are a series of steps that need to occur:
 	3. Return the appropriate Response Code
 */
 
+//Relatively easy to support multiple queries,
+//Would have to change the path regex, and then when we get the teamnumber
+// we would split on commas. send the search as go funcs, have a select
+//waiting for responses, append to an array and serve the array
+
 //TODO:What should this do? Perhaps announce that the api server is actually on
 //this port? Perhaps return a StatusNoContent(204) or a StatusFound(300)?
-//TODO: 405 errors need to write the ALLOW header
 func rootHandler(w http.ResponseWriter, req *http.Request) {
 	http.Error(w, "The Scoutmaster9000 API Server resides on this port.",
 		http.StatusNoContent)
@@ -36,10 +40,6 @@ func rootHandler(w http.ResponseWriter, req *http.Request) {
 
 func specTeamHandler(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
-	//Relatively easy to support multiple queries,
-	//Would have to change the path regex, and then when we get the teamnumber
-	// we would split on commas. send the search as go funcs, have a select
-	//waiting for responses, append to an array and serve the array
 	case "GET":
 		params := mux.Vars(req)
 		teamNum, err := parseNum(params, "teamNum")
@@ -53,7 +53,7 @@ func specTeamHandler(w http.ResponseWriter, req *http.Request) {
 		log.Println(teamNum)
 		teams, e := SearchByTeamNum(teamNum, 0, 1)
 		//Doesn't return error if no results are found as the search didn't fail,
-		//it just found nothing.
+		//it just found nothing. or just return a 404?
 		if e != nil || len(teams) == 0 {
 			http.Error(w, "Team Couldn't Be Found.",
 				http.StatusBadRequest)
@@ -72,9 +72,8 @@ func specTeamHandler(w http.ResponseWriter, req *http.Request) {
 		}
 		log.Println(teamNum)
 		break
-
 	default:
-		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		Serve405(w, "GET,PUT,PATCH")
 		break
 	}
 }
@@ -110,7 +109,7 @@ func genTeamHandler(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, http.StatusText(http.StatusCreated), http.StatusCreated)
 		break
 	default:
-		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		Serve405(w, "GET,POST")
 		break
 	}
 }
@@ -130,9 +129,8 @@ func specUserHandler(w http.ResponseWriter, req *http.Request) {
 	case "PUT", "PATCH":
 		break
 	default:
-		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		Serve405(w, "GET,PUT,PATCH")
 		break
-
 	}
 }
 
@@ -143,9 +141,8 @@ func genUserHandler(w http.ResponseWriter, req *http.Request) {
 	case "POST":
 		break
 	default:
-		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		Serve405(w, "GET,POST")
 		break
-
 	}
 }
 func specRegionalHandler(w http.ResponseWriter, req *http.Request) {
@@ -177,9 +174,8 @@ func specRegionalHandler(w http.ResponseWriter, req *http.Request) {
 		//This update will probably be about a match, might be helpful know
 		break
 	default:
-		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		Serve405(w, "GET,PUT,PATCH")
 		break
-
 	}
 }
 
@@ -196,7 +192,6 @@ func genRegionalHandler(w http.ResponseWriter, req *http.Request) {
 		log.Println(regionals)
 		ServeJSON(w, regionals)
 		break
-
 	case "POST":
 		var r sts.Regional
 		err := ReadJSON(req, &r)
@@ -214,8 +209,7 @@ func genRegionalHandler(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, http.StatusText(http.StatusCreated), http.StatusCreated)
 		break
 	default:
-		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		Serve405(w, "GET,POST")
 		break
-
 	}
 }

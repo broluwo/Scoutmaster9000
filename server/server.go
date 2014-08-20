@@ -68,7 +68,6 @@ var (
 			PrefixHandler: genRegionalHandler,
 			PostfixHandler: []func(http.ResponseWriter, *http.Request){
 				specRegionalHandler,
-				//Create custom function for year handling? Or nah.
 				specRegionalHandler,
 			},
 		},
@@ -215,6 +214,14 @@ func Insert(collectionName string, values ...interface{}) error {
 		return err
 	}
 	return withCollection(collectionName, fn)
+}
+
+//Serve405 serves a 405 Method Not Allowed error while attatching the required allow header.
+func Serve405(w http.ResponseWriter, allow string) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Allow", allow)
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	w.Write([]byte(http.StatusText(http.StatusMethodNotAllowed)))
 }
 
 //SearchTeam is a generic form for searching for a Team
